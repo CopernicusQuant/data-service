@@ -1,0 +1,2 @@
+fetcher:
+  tushare_token: "${TUSHARE_TOKEN}"
