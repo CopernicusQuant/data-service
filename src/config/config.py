@@ -12,8 +12,15 @@ CONFIG_FILE_PATH = "config.yaml"
 class FetcherConfig(BaseModel):
     tushare_token: str
 
+class StoreConfig(BaseModel):
+    access_key_id: str
+    secret_access_key: str
+    bucket_name: str
+    bucket_endpoint: str
+
 class Configs(BaseModel):
     fetcher: FetcherConfig
+    store: StoreConfig
 
 def load_config(path: str = CONFIG_FILE_PATH) -> Configs:
     """
