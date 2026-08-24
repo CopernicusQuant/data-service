@@ -1,3 +1,5 @@
+from src.fetcher.data_fetcher import StockDataFetcher
+from src.store.data_store import StockDataStore
 import sys
 import json
 from datetime import datetime, timezone
@@ -33,8 +35,19 @@ def configure_logging() -> logging.Logger:
 def main():
     logger = configure_logging()
     logger.info("Starting application")
-    config = load_config()
-    logger.info("Configuration loaded")
+    try:
+        config = load_config()
+        store = StockDataStore(config=config.store)
+    except Exception:
+        logger.exception("Failed to start the service")
+        sys.exit(1)
+
+    fetcher = StockDataFetcher(
+        config=config.fetcher, stock_list_df=store.stock_list_df)
+
+    # sample_data = fetcher.get_us_daily("AAPL", "20260810", "20260819")
+    # print(sample_data.head())
+    # print(sample_data["trade_date"].min(), sample_data["trade_date"].max())
 
 if __name__ == "__main__":
     main()

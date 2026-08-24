@@ -1,6 +1,6 @@
 # data-service
 
-Copernicus quant system's data service | 哥白尼量化系统数据服务
+Copernicus quant system's data service | Copernicus量化系统数据服务
 
 Development notes:
 
