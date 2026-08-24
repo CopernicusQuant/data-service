@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Sequence
 from src.config import StoreConfig
 import pyarrow as pa
 import pyarrow.fs as fs
@@ -84,7 +84,7 @@ class StockDataStore:
                 f"save_stock expects data exactly one ticker, received {len(tickers)} tickers"
             )
         ts_code = tickers[0]
-        path = self._stock_path(ts_code=ts_code)
+        path = self._stock_path(ts_code)
 
         # Merge existing R2 data with the latest fetched data
         data = stock_df.copy()
@@ -107,8 +107,29 @@ class StockDataStore:
             )
         return path
 
-    def read_stock(self, ):
-        pass
+    def read_stock(
+        self,
+        ts_code: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        columns: Optional[Sequence[str]] = None
+    ) -> pd.DataFrame:
+        path = self._stock_path(ts_code)
+        file_info = self.fs.get_file_info(path)
+        if file_info.type != fs.FileType.File:
+            raise FileNotFoundError(f"Stock data does not exist: {path}")
+        with self.fs.open_input_file(path) as source:
+            if columns:
+                table = pq.read_table(source, columns=columns)
+            else:
+                table = pq.read_table(source)
+        data = table.to_pandas()
+        if start_date:
+            data = data[data["trade_date"] >= start_date]
+        if end_date:
+            data = data[data["trade_date"] <= end_date]
+        return data.sort_values("trade_date").reset_index(drop=True)
+
 
     def _stock_path(self, ts_code: str) -> str:
         return f"{self.bucket_name}/{STOCK_DIR}/{ts_code}.parquet"
