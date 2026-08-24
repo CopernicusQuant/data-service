@@ -1,0 +1,2 @@
+words=["tushare"]
+ignore_paths=["**/*.yaml", "**/*.toml", "**/*.lock"]
