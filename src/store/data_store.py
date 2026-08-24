@@ -112,17 +112,13 @@ class StockDataStore:
         ts_code: str,
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
-        columns: Optional[Sequence[str]] = None
     ) -> pd.DataFrame:
         path = self._stock_path(ts_code)
         file_info = self.fs.get_file_info(path)
         if file_info.type != fs.FileType.File:
             raise FileNotFoundError(f"Stock data does not exist: {path}")
         with self.fs.open_input_file(path) as source:
-            if columns:
-                table = pq.read_table(source, columns=columns)
-            else:
-                table = pq.read_table(source)
+            table = pq.read_table(source)
         data = table.to_pandas()
         if start_date:
             data = data[data["trade_date"] >= start_date]
