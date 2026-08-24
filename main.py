@@ -45,9 +45,17 @@ def main():
     fetcher = StockDataFetcher(
         config=config.fetcher, stock_list_df=store.stock_list_df)
 
-    # sample_data = fetcher.get_us_daily("AAPL", "20260810", "20260819")
-    # print(sample_data.head())
-    # print(sample_data["trade_date"].min(), sample_data["trade_date"].max())
+    # for ticker in ["AAPL", "AVGO", "SPCX"]:
+    #     try:
+    #         sample_data = fetcher.get_us_daily(ticker, "20260810", "20260819")
+    #     except Exception as exc:
+    #         logger.warning(f"failed to get stock {ticker}: {exc}")
+    #         continue
+    #     if sample_data is None:
+    #         logger.warning(f"failed to get stock {ticker}")
+    #         continue
+    #     store.save_stock(sample_data)
+    #     logger.info(f"successfully uploaded {ticker}")
 
 if __name__ == "__main__":
     main()
