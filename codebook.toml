@@ -1,2 +1,2 @@
-words=["tushare"]
+words=["tushare", "Cloudflare"]
 ignore_paths=["**/*.yaml", "**/*.toml", "**/*.lock"]

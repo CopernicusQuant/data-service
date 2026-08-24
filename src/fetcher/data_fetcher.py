@@ -1,3 +1,4 @@
+from typing import Optional
 from src.config import FetcherConfig
 import logging
 import tushare as ts
@@ -22,7 +23,7 @@ class StockDataFetcher:
 
     def get_us_daily(
         self, ts_code: str, start_date: str = "20050101", end_date: str = ""
-    ) -> pd.DataFrame:
+    ) -> Optional[pd.DataFrame]:
         """Fetch daily US stock data from Tushare.
 
         Returns:
@@ -90,8 +91,10 @@ class StockDataFetcher:
                 break
         if not success:
             logger.error(f"Failed to fetch us_daily of {ts_code}: {str(exception)}")
-            return pd.DataFrame()
-
+            return None
+        if df.empty:
+            logger.warning(f"Got empty data {ts_code}")
+            return None
         df["roe"] = df["pb"] / df["pe"]
         df["total_share"] = df["total_mv"] / df["close"]
         df = df.rename(columns={"turnover_ratio": "turnover"})

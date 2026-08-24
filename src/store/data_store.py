@@ -57,3 +57,9 @@ class StockDataStore:
         if num != None and num > 0:
             return stocks[:num]
         return stocks
+
+    def save_stock(self):
+        """
+        Save stock parquet data to Cloudflare R2 storage
+        """
+        pass
