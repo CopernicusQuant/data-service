@@ -5,4 +5,4 @@ store:
   access_key_id: "${R2_ACCESS_KEY_ID}"
   secret_access_key: "${R2_SECRET_ACCESS_KEY}"
   bucket_name: "${R2_BUCKET_NAME}"
-  bucket_endpoint: ${R2_ENDPOINT}
+  bucket_endpoint: "${R2_ENDPOINT}"
