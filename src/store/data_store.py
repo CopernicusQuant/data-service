@@ -1,7 +1,9 @@
 from typing import List, Optional
 from src.config import StoreConfig
+import pyarrow as pa
 import pyarrow.fs as fs
 import pyarrow.csv as csv
+import pyarrow.parquet as pq
 import pandas as pd
 
 INDEX_DIR = "index"
@@ -46,20 +48,67 @@ class StockDataStore:
             )
         return stock_list.to_pandas().set_index("ts_code", drop=False)
 
-    def list_stock_codes(self, num: Optional[int] = None) -> List[str]:
+    def list_stock_tickers(self, num: Optional[int] = None) -> List[str]:
         """
-        Get stock codes from the memory stock list data
+        Get stock tickers from the memory stock list data
 
         Args:
-            num: number of stock codes to retrieve
+            num: number of stock tickers to retrieve
         """
         stocks = self.stock_list_df["ts_code"].dropna().astype(str).tolist()
         if num != None and num > 0:
             return stocks[:num]
         return stocks
 
-    def save_stock(self):
+    def save_stock(self, stock_df: pd.DataFrame) -> str:
         """
-        Save stock parquet data to Cloudflare R2 storage
+        Merge daily data into one Parquet object for a single ticker
+        and upload it to Cloudflare R2
+
+        Returns:
+            The R2 object path written
         """
+        required_columns = {"ts_code", "trade_date"}
+        missing_columns = required_columns - set(stock_df.columns)
+        if missing_columns:
+            raise ValueError(
+                f"Stock data is missing required columns: {missing_columns}"
+            )
+        if stock_df.empty:
+            raise ValueError("Empty df received")
+
+        # ensure there's only one ticker in the given df
+        tickers = stock_df["ts_code"].dropna().unique()
+        if len(tickers) != 1:
+            raise ValueError(
+                f"save_stock expects data exactly one ticker, received {len(tickers)} tickers"
+            )
+        ts_code = tickers[0]
+        path = self._stock_path(ts_code=ts_code)
+
+        # Merge existing R2 data with the latest fetched data
+        data = stock_df.copy()
+        file_info = self.fs.get_file_info(path)
+        if file_info.type == fs.FileType.File:
+            with self.fs.open_input_file(path) as source:
+                old_data = pq.read_table(source).to_pandas()
+            data = pd.concat([old_data, data], ignore_index=True) # old data first, new data second
+        data = (data.drop_duplicates(subset="trade_date", keep="last")
+            .sort_values("trade_date").reset_index(drop=True))
+
+        # save data to r2 storage
+        table = pa.Table.from_pandas(data, preserve_index=False)
+        with self.fs.open_output_stream(path) as sink:
+            pq.write_table(
+                table,
+                sink,
+                compression="zstd",
+                compression_level=3,
+            )
+        return path
+
+    def read_stock(self, ):
         pass
+
+    def _stock_path(self, ts_code: str) -> str:
+        return f"{self.bucket_name}/{STOCK_DIR}/{ts_code}.parquet"
