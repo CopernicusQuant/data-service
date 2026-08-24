@@ -45,6 +45,9 @@ def main():
     fetcher = StockDataFetcher(
         config=config.fetcher, stock_list_df=store.stock_list_df)
 
+    # test_data = store.read_stock("AAPL", start_date="20260813", end_date="20260814")
+    # print(test_data)
+
     # for ticker in ["AAPL", "AVGO", "SPCX"]:
     #     try:
     #         sample_data = fetcher.get_us_daily(ticker, "20260810", "20260819")
