@@ -19,7 +19,7 @@ DATA_DOC = "data"
 
 
 class JobStatus(StrEnum):
-    NONE = "queues"
+    QUEUED = "queued"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
@@ -38,14 +38,15 @@ class JobResult(BaseModel):
     failed_num: int = 0
     records_fetched: int = 0
     failed_codes: list[str] = []
+    total_time: int = 0  # this is suppose to be in seconds
 
 
 class JobRecord(BaseModel):
     id: str
-    type: JobType | None
-    status: JobStatus = JobStatus.NONE
+    type: JobType
+    status: JobStatus = JobStatus.QUEUED
 
-    requested_at: datetime | None = None
+    requested_at: datetime = Field(default_factory=_server_time_now)
     started_at: datetime | None = None
     finished_at: datetime | None = None
     result: JobResult | None
@@ -59,7 +60,7 @@ class DataRecord(BaseModel):
 
 
 class ServiceMetadata(BaseModel):
-    job: JobRecord
+    job: JobRecord | None
     data: DataRecord
 
 
