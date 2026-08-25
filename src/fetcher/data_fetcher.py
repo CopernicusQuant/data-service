@@ -1,13 +1,15 @@
-from typing import Optional
-from src.config import FetcherConfig
 import logging
-import tushare as ts
-import pandas as pd
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pandas as pd
+import tushare as ts
+
+from src.config import FetcherConfig
+
 logger = logging.getLogger(__name__)
+
 
 class StockDataFetcher:
     """Fetch US stock, index, calendar, and metadata data."""
@@ -23,7 +25,7 @@ class StockDataFetcher:
 
     def get_us_daily(
         self, ts_code: str, start_date: str = "20050101", end_date: str = ""
-    ) -> Optional[pd.DataFrame]:
+    ) -> pd.DataFrame | None:
         """Fetch daily US stock data from Tushare.
 
         Returns:
@@ -33,7 +35,7 @@ class StockDataFetcher:
             datetime.now(tz=ZoneInfo("America/New_York")).strftime("%Y%m%d")
             if not end_date
             else end_date
-        ) # end date defaults to "today" if not provided
+        )  # end date defaults to "today" if not provided
 
         # if no ts_code provided, only fetch one day data
         if not ts_code and start_date != end_date:
@@ -83,7 +85,9 @@ class StockDataFetcher:
             except Exception as e:
                 exception = e
                 try_times += 1
-                logger.warning(f"Fetch us_daily exception {ts_code}:{str(exception)}, retry time ${try_times}")
+                logger.warning(
+                    f"Fetch us_daily exception {ts_code}:{str(exception)}, retry time ${try_times}"
+                )
                 time.sleep(30)
                 continue
             else:
