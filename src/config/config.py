@@ -1,7 +1,7 @@
-import logging
-import yaml
 import os
 import re
+
+import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
@@ -9,8 +9,10 @@ from pydantic import BaseModel
 load_dotenv()
 CONFIG_FILE_PATH = "config.yaml"
 
+
 class FetcherConfig(BaseModel):
     tushare_token: str
+
 
 class StoreConfig(BaseModel):
     access_key_id: str
@@ -18,9 +20,16 @@ class StoreConfig(BaseModel):
     bucket_name: str
     bucket_endpoint: str
 
+
+class MetaConfig(BaseModel):
+    meta_collection_name: str
+
+
 class Configs(BaseModel):
     fetcher: FetcherConfig
     store: StoreConfig
+    meta: MetaConfig
+
 
 def load_config(path: str = CONFIG_FILE_PATH) -> Configs:
     """

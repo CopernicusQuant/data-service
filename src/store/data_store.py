@@ -1,35 +1,32 @@
-from typing import List, Optional, Sequence
-from src.config import StoreConfig
-import pyarrow as pa
-import pyarrow.fs as fs
-import pyarrow.csv as csv
-import pyarrow.parquet as pq
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+from pyarrow import csv, fs
+
+from src.config import StoreConfig
 
 INDEX_DIR = "index"
 STOCK_DIR = "stock"
 META_DIR = "meta"
 
+
 class StockDataStore:
     def __init__(self, config: StoreConfig):
         # initialize Cloudflare r2 filesystem
-        endpoint = config.bucket_endpoint.replace(
-            "https://", "").replace("http://", "")
+        endpoint = config.bucket_endpoint.replace("https://", "").replace("http://", "")
         self.fs = fs.S3FileSystem(
             access_key=config.access_key_id,
             secret_key=config.secret_access_key,
             region="auto",
             scheme="https",
-            endpoint_override=endpoint
+            endpoint_override=endpoint,
         )
         # load stock list to the system
         self.bucket_name = config.bucket_name
         try:
             self.stock_list_df = self.load_stock_list()
         except Exception as exc:
-            raise RuntimeError(
-                f"Required stock list file could not be loaded"
-            ) from exc
+            raise RuntimeError("Required stock list file could not be loaded") from exc
 
     def load_stock_list(self) -> pd.DataFrame:
         """
@@ -43,12 +40,10 @@ class StockDataStore:
         with self.fs.open_input_file(stock_list_path) as source:
             stock_list = csv.read_csv(source)
         if stock_list.num_rows == 0:
-            raise ValueError(
-                f"stock list file is empty: ${stock_list_path}"
-            )
+            raise ValueError(f"stock list file is empty: ${stock_list_path}")
         return stock_list.to_pandas().set_index("ts_code", drop=False)
 
-    def list_stock_tickers(self, num: Optional[int] = None) -> List[str]:
+    def list_stock_tickers(self, num: int | None = None) -> list[str]:
         """
         Get stock tickers from the memory stock list data
 
@@ -92,9 +87,14 @@ class StockDataStore:
         if file_info.type == fs.FileType.File:
             with self.fs.open_input_file(path) as source:
                 old_data = pq.read_table(source).to_pandas()
-            data = pd.concat([old_data, data], ignore_index=True) # old data first, new data second
-        data = (data.drop_duplicates(subset="trade_date", keep="last")
-            .sort_values("trade_date").reset_index(drop=True))
+            data = pd.concat(
+                [old_data, data], ignore_index=True
+            )  # old data first, new data second
+        data = (
+            data.drop_duplicates(subset="trade_date", keep="last")
+            .sort_values("trade_date")
+            .reset_index(drop=True)
+        )
 
         # save data to r2 storage
         table = pa.Table.from_pandas(data, preserve_index=False)
@@ -110,8 +110,8 @@ class StockDataStore:
     def read_stock(
         self,
         ts_code: str,
-        start_date: Optional[str] = None,
-        end_date: Optional[str] = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> pd.DataFrame:
         path = self._stock_path(ts_code)
         file_info = self.fs.get_file_info(path)
@@ -125,7 +125,6 @@ class StockDataStore:
         if end_date:
             data = data[data["trade_date"] <= end_date]
         return data.sort_values("trade_date").reset_index(drop=True)
-
 
     def _stock_path(self, ts_code: str) -> str:
         return f"{self.bucket_name}/{STOCK_DIR}/{ts_code}.parquet"
