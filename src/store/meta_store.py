@@ -135,7 +135,6 @@ class MetaStore:
             )
             if job_data and job_data.status == JobStatus.RUNNING:
                 return None
-
             transaction.set(self.job_record_ref, new_job.model_dump(mode="python"))
             return new_job
 
@@ -149,6 +148,10 @@ class MetaStore:
         total_rows: int,
         total_records: int,
     ):
+        """
+        Update job result info to the firestore database
+        """
+
         transaction = self.db.transaction()
 
         @firestore.transactional
