@@ -55,13 +55,14 @@ class StockDataStore:
             return stocks[:num]
         return stocks
 
-    def save_stock(self, stock_df: pd.DataFrame) -> str:
+    def save_stock(self, stock_df: pd.DataFrame) -> tuple[str, int]:
         """
         Merge daily data into one Parquet object for a single ticker
         and upload it to Cloudflare R2
 
         Returns:
             The R2 object path written
+            The number of record
         """
         required_columns = {"ts_code", "trade_date"}
         missing_columns = required_columns - set(stock_df.columns)
@@ -105,7 +106,7 @@ class StockDataStore:
                 compression="zstd",
                 compression_level=3,
             )
-        return path
+        return path, len(data)
 
     def read_stock(
         self,
