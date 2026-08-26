@@ -9,7 +9,8 @@ from fastapi import FastAPI
 from src.config import load_config
 from src.fetcher import StockDataFetcher
 from src.handlers import DataHandler
-from src.store import StockDataStore
+from src.store import MetaStore, StockDataStore
+from src.store.meta_store import JobType
 
 
 # Format python logger to Google CloudRun-compatible log format
@@ -45,12 +46,22 @@ logger = configure_logging()
 logger.info("Starting application")
 try:
     config = load_config()
-    store = StockDataStore(config=config.store)
+    data_store = StockDataStore(config=config.store)
+    meta_store = MetaStore(config=config.meta)
 except Exception:
     logger.exception("Failed to start the service")
     sys.exit(1)
-fetcher = StockDataFetcher(config=config.fetcher, stock_list_df=store.stock_list_df)
-data_handler = DataHandler(fetcher=fetcher, store=store)
+fetcher = StockDataFetcher(
+    config=config.fetcher, stock_list_df=data_store.stock_list_df
+)
+data_handler = DataHandler(
+    fetcher=fetcher,
+    data_store=data_store,
+    meta_store=meta_store,
+)
+
+# result = meta_store.create_job(JobType.GET_STOCKS)
+# print(result)
 
 
 @app.get("/health")
