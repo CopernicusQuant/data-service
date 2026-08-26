@@ -86,7 +86,7 @@ class StockDataFetcher:
                 exception = e
                 try_times += 1
                 logger.warning(
-                    f"Fetch us_daily exception {ts_code}:{str(exception)}, retry time ${try_times}"
+                    f"Fetch us_daily exception {ts_code}:{exception!s}, retry time ${try_times}"
                 )
                 time.sleep(30)
                 continue
@@ -94,7 +94,7 @@ class StockDataFetcher:
                 success = True
                 break
         if not success:
-            logger.error(f"Failed to fetch us_daily of {ts_code}: {str(exception)}")
+            logger.error(f"Failed to fetch us_daily of {ts_code}: {exception!s}")
             return None
         if df.empty:
             logger.warning(f"Got empty data {ts_code}")

@@ -8,9 +8,8 @@ from fastapi import FastAPI
 
 from src.config import load_config
 from src.fetcher import StockDataFetcher
-from src.handlers import DataHandler
+from src.handler import DataHandler
 from src.store import MetaStore, StockDataStore
-from src.store.meta_store import JobType
 
 
 # Format python logger to Google CloudRun-compatible log format
@@ -60,10 +59,13 @@ data_handler = DataHandler(
     meta_store=meta_store,
 )
 
-# result = meta_store.create_job(JobType.GET_STOCKS)
-# print(result)
-
 
 @app.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# @app.get("/get-stocks")
+# async def get_stocks():
+#     data_handler.run_get_stock_data()
+#     return {"status": "ok"}

@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime
 from enum import StrEnum
@@ -20,7 +21,6 @@ DATA_DOC = "data"
 
 
 class JobStatus(StrEnum):
-    IDLE = "idle"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
@@ -39,7 +39,7 @@ class JobResult(BaseModel):
     failed_num: int = 0
     records_fetched: int = 0
     failed_codes: list[str] = []
-    total_time: int = 0  # this is suppose to be in seconds
+    time_spent: float = 0.0  # in seconds
 
 
 class JobRecord(BaseModel):
@@ -56,7 +56,8 @@ class JobRecord(BaseModel):
 class DataRecord(BaseModel):
     stock_count: int = 0
     index_count: int = 0
-    total_rows: int = 0
+    total_stock_rows: int = 0
+    total_index_rows: int = 0
     updated_at: datetime = Field(default_factory=_server_time_now)
 
 
@@ -134,8 +135,45 @@ class MetaStore:
             )
             if job_data and job_data.status == JobStatus.RUNNING:
                 return None
-
             transaction.set(self.job_record_ref, new_job.model_dump(mode="python"))
             return new_job
 
         return create(transaction=transaction)
+
+    def complete_job(
+        self,
+        job_type: JobType,
+        success: bool,
+        job_result: JobResult,
+        total_rows: int,
+        total_records: int,
+    ):
+        """
+        Update job result info to the firestore database
+        """
+
+        transaction = self.db.transaction()
+
+        @firestore.transactional
+        def update(transaction):
+            job_snapshot = self.job_record_ref.get(transaction=transaction)
+            record_snapshot = self.data_record_ref.get(transaction=transaction)
+
+            job_data = JobRecord.model_validate(job_snapshot.to_dict())
+            job_data.status = JobStatus.SUCCEEDED if success else JobStatus.FAILED
+            job_data.result = job_result
+            job_data.ended_at = _server_time_now()
+
+            record_data = DataRecord.model_validate(record_snapshot.to_dict())
+            if job_type in [JobType.UPDATE_STOCKS, JobType.GET_STOCKS]:
+                record_data.stock_count = total_records
+                record_data.total_stock_rows = total_rows
+            elif job_type in [JobType.GET_INDEX, JobType.UPDATE_INDEX]:
+                record_data.index_count = total_records
+                record_data.total_index_rows = total_rows
+            record_data.updated_at = _server_time_now()
+
+            transaction.set(self.job_record_ref, job_data.model_dump(mode="python"))
+            transaction.set(self.data_record_ref, record_data.model_dump(mode="python"))
+
+        update(transaction=transaction)
