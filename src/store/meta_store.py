@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime
 from enum import StrEnum
 from zoneinfo import ZoneInfo
@@ -19,7 +20,7 @@ DATA_DOC = "data"
 
 
 class JobStatus(StrEnum):
-    QUEUED = "queued"
+    IDLE = "idle"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
@@ -44,18 +45,18 @@ class JobResult(BaseModel):
 class JobRecord(BaseModel):
     id: str
     type: JobType
-    status: JobStatus = JobStatus.QUEUED
+    status: JobStatus = JobStatus.RUNNING
 
-    requested_at: datetime = Field(default_factory=_server_time_now)
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
-    result: JobResult | None
+    started_at: datetime = Field(default_factory=_server_time_now)
+    ended_at: datetime | None = None
+    result: JobResult | None = None
 
 
 # ========== DB record schemas ==========
 class DataRecord(BaseModel):
     stock_count: int = 0
     index_count: int = 0
+    total_rows: int = 0
     updated_at: datetime = Field(default_factory=_server_time_now)
 
 
@@ -66,14 +67,75 @@ class ServiceMetadata(BaseModel):
 
 class MetaStore:
     def __init__(self, config: MetaConfig):
+
         self.db = firestore.Client()
-        self.data_ref = self.db.collection(config.meta_collection_name).document(
+        self.job_record_ref = self.db.collection(config.meta_collection_name).document(
+            JOB_DOC
+        )
+        self.data_record_ref = self.db.collection(config.meta_collection_name).document(
             DATA_DOC
         )
-        self.job_ref = self.db.collection(config.meta_collection_name).document(JOB_DOC)
+        self._ensure_metadata()
 
-    # def ensure_metadata(self) -> ServiceMetadata:
-    #     job_snapshot = self.job_ref.get()
-    #     if job_snapshot.exists:
-    #         job = JobRecord.model_validate(job_snapshot.to_dict())
-    #     else:
+    def get_metadata(self) -> ServiceMetadata:
+        """
+        Get metadata of the current database
+
+        Returns:
+            ServiceMetadata
+        """
+        return self._ensure_metadata()
+
+    def _ensure_metadata(self) -> ServiceMetadata:
+        """
+        Retrieve database metadata from Firebase. For the data metadata, if the record does not exist,
+        system will initialize an default record. For the job metadata, if it does not exists, just ignore the data
+
+        Returns:
+            ServiceMetadata
+        """
+        job_snapshot = self.job_record_ref.get()
+        data_snapshot = self.data_record_ref.get()
+
+        job = (
+            JobRecord.model_validate(job_snapshot.to_dict())
+            if job_snapshot.exists
+            else None
+        )
+        if data_snapshot.exists:
+            data = DataRecord.model_validate(data_snapshot.to_dict())
+        else:
+            data = DataRecord()
+            self.data_record_ref.set(
+                data.model_dump(mode="python")
+            )  # use python to make datetime compatible with db date time format
+        return ServiceMetadata(job=job, data=data)
+
+    def create_job(self, job_type: JobType) -> JobRecord | None:
+        """
+        Create a new job when there's no running job. Otherwise just early return
+
+        Returns:
+            JobRecord if no current job running, otherwise None
+        """
+        new_job = JobRecord(
+            id=uuid.uuid4().hex,
+            type=job_type,
+        )
+        transaction = self.db.transaction()
+
+        @firestore.transactional
+        def create(transaction) -> JobRecord | None:
+            job_snapshot = self.job_record_ref.get(transaction=transaction)
+            job_data = (
+                JobRecord.model_validate(job_snapshot.to_dict())
+                if job_snapshot.exists
+                else None
+            )
+            if job_data and job_data.status == JobStatus.RUNNING:
+                return None
+
+            transaction.set(self.job_record_ref, new_job.model_dump(mode="python"))
+            return new_job
+
+        return create(transaction=transaction)
