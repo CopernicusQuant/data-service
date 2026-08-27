@@ -53,19 +53,22 @@ class DataHandler:
         if end_date:
             kwargs["end_date"] = end_date
 
-        if kwargs["start_date"] and kwargs["end_date"] < kwargs["start_date"]:
-            kwargs["end_date"] = kwargs["start_date"]
+        if start_date and end_date and kwargs["end_date"] < kwargs["start_date"]:
+            kwargs["end_date"] = start_date
 
         start_time = time.perf_counter()
 
-        for ticker in tickers:
+        for i, ticker in enumerate(tickers):
             try:
                 result.requested_num += 1
                 stock_df = self.fetcher.get_us_daily(ticker, **kwargs)
                 if stock_df is None:
                     raise RuntimeError(f"Fetcher returned no data: {ticker}")
                 result.records_fetched += len(stock_df)
-                _, num_rows = self.data_store.save_stock(stock_df=stock_df)
+                _, num_rows = self.data_store.save_stock(
+                    stock_df=stock_df,
+                    refresh=True,  # we should replace the existing data in this mode
+                )
                 result.total_rows += num_rows
                 result.total_records += 1
 
@@ -74,19 +77,17 @@ class DataHandler:
                 result.failed_codes.append(ticker)
                 result.failed_num += 1
 
+            if (i + 1) % 10 == 0:
+                logger.info(f"{(i + 1)}/{len(tickers)} task executed")
         end_time = time.perf_counter()
         result.time_spent = end_time - start_time
         return result
 
-    def run_get_stock_data(self):
+    def run_get_stock_data(self, job_id: str):
         """
         Run get stock data job, to get the complete stock data from 20050101 till the current day
         """
 
-        new_job = self.meta_store.create_job(job_type=JobType.GET_STOCKS)
-        if not new_job:
-            logger.error("failed to create new job")
-            return
         result = self._get_stock_data()
         job_result = JobResult(
             requested_num=result.requested_num,
@@ -103,4 +104,4 @@ class DataHandler:
             total_rows=result.total_rows,
             total_records=result.total_records,
         )
-        logger.info(f"{JobType.GET_STOCKS} completed.")
+        logger.info(f"{JobType.GET_STOCKS}: {job_id} completed.")

@@ -55,10 +55,16 @@ class StockDataStore:
             return stocks[:num]
         return stocks
 
-    def save_stock(self, stock_df: pd.DataFrame) -> tuple[str, int]:
+    def save_stock(
+        self, stock_df: pd.DataFrame, refresh: bool = False
+    ) -> tuple[str, int]:
         """
         Merge daily data into one Parquet object for a single ticker
         and upload it to Cloudflare R2
+
+        Args:
+            stock_df: the fetched stock dataframe
+            refresh: if `True`, replace the existing data
 
         Returns:
             The R2 object path written
@@ -82,15 +88,16 @@ class StockDataStore:
         ts_code = tickers[0]
         path = self._stock_path(ts_code)
 
-        # Merge existing R2 data with the latest fetched data
         data = stock_df.copy()
-        file_info = self.fs.get_file_info(path)
-        if file_info.type == fs.FileType.File:
-            with self.fs.open_input_file(path) as source:
-                old_data = pq.read_table(source).to_pandas()
-            data = pd.concat(
-                [old_data, data], ignore_index=True
-            )  # old data first, new data second
+        if refresh == False:
+            # Merge existing R2 data with the latest fetched data
+            file_info = self.fs.get_file_info(path)
+            if file_info.type == fs.FileType.File:
+                with self.fs.open_input_file(path) as source:
+                    old_data = pq.read_table(source).to_pandas()
+                data = pd.concat(
+                    [old_data, data], ignore_index=True
+                )  # old data first, new data second
         data = (
             data.drop_duplicates(subset="trade_date", keep="last")
             .sort_values("trade_date")

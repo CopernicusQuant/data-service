@@ -24,9 +24,10 @@ class StockDataFetcher:
         self.stock_list_df = stock_list_df
 
     def get_us_daily(
-        self, ts_code: str, start_date: str = "20050101", end_date: str = ""
+        self, ts_code: str, start_date: str = "20060101", end_date: str = ""
     ) -> pd.DataFrame | None:
         """Fetch daily US stock data from Tushare.
+        we only get the most recent 20 years stock data
 
         Returns:
             DataFrame of us stock data

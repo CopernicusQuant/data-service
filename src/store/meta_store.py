@@ -87,31 +87,6 @@ class MetaStore:
         """
         return self._ensure_metadata()
 
-    def _ensure_metadata(self) -> ServiceMetadata:
-        """
-        Retrieve database metadata from Firebase. For the data metadata, if the record does not exist,
-        system will initialize an default record. For the job metadata, if it does not exists, just ignore the data
-
-        Returns:
-            ServiceMetadata
-        """
-        job_snapshot = self.job_record_ref.get()
-        data_snapshot = self.data_record_ref.get()
-
-        job = (
-            JobRecord.model_validate(job_snapshot.to_dict())
-            if job_snapshot.exists
-            else None
-        )
-        if data_snapshot.exists:
-            data = DataRecord.model_validate(data_snapshot.to_dict())
-        else:
-            data = DataRecord()
-            self.data_record_ref.set(
-                data.model_dump(mode="python")
-            )  # use python to make datetime compatible with db date time format
-        return ServiceMetadata(job=job, data=data)
-
     def create_job(self, job_type: JobType) -> JobRecord | None:
         """
         Create a new job when there's no running job. Otherwise just early return
@@ -177,3 +152,48 @@ class MetaStore:
             transaction.set(self.data_record_ref, record_data.model_dump(mode="python"))
 
         update(transaction=transaction)
+
+    def _ensure_metadata(self) -> ServiceMetadata:
+        """
+        Retrieve database metadata from Firebase. For the data metadata, if the record does not exist,
+        system will initialize an default record. For the job metadata, if it does not exists, just ignore the data
+
+        Returns:
+            ServiceMetadata
+        """
+        job_snapshot = self.job_record_ref.get()
+        data_snapshot = self.data_record_ref.get()
+
+        job = (
+            JobRecord.model_validate(job_snapshot.to_dict())
+            if job_snapshot.exists
+            else None
+        )
+
+        if job is not None and job.status == JobStatus.RUNNING:
+            job = self._set_job_interrupted()
+
+        if data_snapshot.exists:
+            data = DataRecord.model_validate(data_snapshot.to_dict())
+        else:
+            data = DataRecord()
+            self.data_record_ref.set(
+                data.model_dump(mode="python")
+            )  # use python to make datetime compatible with db date time format
+        return ServiceMetadata(job=job, data=data)
+
+    def _set_job_interrupted(self) -> JobRecord:
+        transaction = self.db.transaction()
+
+        @firestore.transactional
+        def interrupt(transaction) -> JobRecord:
+            job_snapshot = self.job_record_ref.get(transaction=transaction)
+
+            job_data = JobRecord.model_validate(job_snapshot.to_dict())
+            job_data.status = JobStatus.INTERRUPTED
+            job_data.ended_at = _server_time_now()
+
+            transaction.set(self.job_record_ref, job_data.model_dump(mode="python"))
+            return job_data
+
+        return interrupt(transaction=transaction)

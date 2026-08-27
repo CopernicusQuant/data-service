@@ -4,12 +4,13 @@ import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import FastAPI
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 
 from src.config import load_config
 from src.fetcher import StockDataFetcher
 from src.handler import DataHandler
 from src.store import MetaStore, StockDataStore
+from src.store.meta_store import JobType
 
 
 # Format python logger to Google CloudRun-compatible log format
@@ -65,7 +66,10 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-# @app.get("/get-stocks")
-# async def get_stocks():
-#     data_handler.run_get_stock_data()
-#     return {"status": "ok"}
+@app.get("/jobs/stocks", status_code=202)
+async def create_stock_job(background_tasks: BackgroundTasks):
+    new_job = meta_store.create_job(job_type=JobType.GET_STOCKS)
+    if new_job is None:
+        raise HTTPException(status_code=409, detail="A job is currently running")
+    background_tasks.add_task(data_handler.run_get_stock_data, new_job.id)
+    return {"job_id": new_job.id, "status": new_job.status}
