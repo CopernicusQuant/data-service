@@ -10,6 +10,16 @@ from src.config import FetcherConfig
 
 logger = logging.getLogger(__name__)
 
+# we just hardcode these four index here
+INDEX_LIST = [
+    "RUT",  # Russell 2000 Index
+    "SPX",  # S&P 500 Index
+    "DJI",  # Dow Jones Industrial Average
+    "IXIC",  # NASDAQ Composite Index
+]
+
+DEFAULT_DATE_START = "20060101"  # we only fetch 20 years data
+
 
 class StockDataFetcher:
     """Fetch US stock, index, calendar, and metadata data."""
@@ -22,9 +32,10 @@ class StockDataFetcher:
         ts.set_token(tushare_token)
         self.tushare_pro = ts.pro_api()
         self.stock_list_df = stock_list_df
+        self.index_list = INDEX_LIST
 
     def get_us_daily(
-        self, ts_code: str, start_date: str = "20060101", end_date: str = ""
+        self, ts_code: str, start_date: str = DEFAULT_DATE_START, end_date: str = ""
     ) -> pd.DataFrame | None:
         """Fetch daily US stock data from Tushare.
         we only get the most recent 20 years stock data
@@ -47,9 +58,6 @@ class StockDataFetcher:
             raise ValueError(
                 "tushare us_daily(): time span should not more than 23 years"
             )
-        try_times = 0
-        success = False
-        exception = None
 
         # there can be ts_code reuse issue, so we need to refer to the stock's list date
         if ts_code != "":
@@ -61,6 +69,55 @@ class StockDataFetcher:
                 stock_list_date = str(self.stock_list_df.loc[ts_code, "list_date"])
                 start_date = max(start_date, stock_list_date)
 
+        df = self._get_us_daily_with_retry(
+            ts_code=ts_code, start_date=start_date, end_date=end_date
+        )
+        if df is None:
+            return None
+        df["roe"] = df["pb"] / df["pe"]
+        df["total_share"] = df["total_mv"] / df["close"]
+        df = df.rename(columns={"turnover_ratio": "turnover"})
+        df = df.sort_values("trade_date").reset_index(drop=True)
+        return df
+
+    def get_us_index(
+        self, ts_code: str, start_date: str = DEFAULT_DATE_START, end_date: str = ""
+    ) -> pd.DataFrame | None:
+        if not ts_code:
+            raise ValueError("ts_code is required for us index data")
+        all_dfs = []
+        limit = 4000
+        offset = 0
+        while True:
+            df = self._get_us_index_with_retry(
+                ts_code=ts_code,
+                start_date=start_date,
+                end_date=end_date,
+                limit=limit,
+                offset=offset,
+            )
+            if df is None:
+                break
+            all_dfs.append(df)
+            if len(df) < limit:
+                break
+            offset += limit
+        final_df = pd.concat(all_dfs, ignore_index=True)
+        final_df = final_df.sort_values("trade_date").reset_index(drop=True)
+        return final_df
+
+    def _get_us_daily_with_retry(
+        self, ts_code: str, start_date: str, end_date: str
+    ) -> pd.DataFrame | None:
+        """
+        Fetch us daily stock data from Tushare, with retry
+
+        Returns:
+            pd.DataFrame if fetched successfully, None otherwise
+        """
+        try_times = 0
+        success = False
+        exception = None
         while try_times < 3:
             try:
                 # this api returns 8000 rows in maximum in one call
@@ -87,7 +144,7 @@ class StockDataFetcher:
                 exception = e
                 try_times += 1
                 logger.warning(
-                    f"Fetch us_daily exception {ts_code}:{exception!s}, retry time ${try_times}"
+                    f"Fetch us_daily exception {ts_code}:{exception!s}, retry time {try_times}"
                 )
                 time.sleep(30)
                 continue
@@ -100,8 +157,62 @@ class StockDataFetcher:
         if df.empty:
             logger.warning(f"Got empty data {ts_code}")
             return None
-        df["roe"] = df["pb"] / df["pe"]
-        df["total_share"] = df["total_mv"] / df["close"]
-        df = df.rename(columns={"turnover_ratio": "turnover"})
-        df = df.sort_values("trade_date").reset_index(drop=True)
         return df
+
+    def _get_us_index_with_retry(
+        self,
+        ts_code: str,
+        start_date: str,
+        end_date: str,
+        limit: int | None = None,
+        offset: int | None = None,
+    ) -> pd.DataFrame | None:
+        """
+        Fetch US index data from Tushare, with retry
+
+        Returns:
+            pd.DataFrame if fetched successfully, otherwise None
+        """
+        try_times = 0
+        exception = None
+        success = False
+        while try_times < 3:
+            try:
+                index_df = self.tushare_pro.index_global(
+                    ts_code=ts_code,
+                    offset=offset,
+                    limit=limit,
+                    start_date=start_date,
+                    end_date=end_date,
+                    fields=[
+                        "ts_code",
+                        "trade_date",
+                        "open",
+                        "close",
+                        "high",
+                        "low",
+                        "pre_close",
+                        "change",
+                        "pct_chg",
+                        "swing",
+                        "vol",
+                    ],
+                )
+            except Exception as e:
+                exception = e
+                try_times += 1
+                logger.warning(
+                    f"Fetch index_global exception {ts_code}:{exception!s}, retry time {try_times}"
+                )
+                time.sleep(30)
+                continue
+            else:
+                success = True
+                break
+        if not success:
+            logger.error(f"Failed to fetch index_global of {ts_code}: {exception!s}")
+            return None
+        if index_df.empty:
+            logger.warning(f"Got empty data {ts_code}")
+            return None
+        return index_df

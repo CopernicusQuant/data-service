@@ -73,3 +73,13 @@ async def create_stock_job(background_tasks: BackgroundTasks):
         raise HTTPException(status_code=409, detail="A job is currently running")
     background_tasks.add_task(data_handler.run_get_stock_data, new_job.id)
     return {"job_id": new_job.id, "status": new_job.status}
+
+
+# experimental
+# @app.get("/index", status_code=200)
+# async def get_index():
+#     df = fetcher.get_us_index("DJI")
+#     if df is None:
+#         raise HTTPException(status_code=500, detail="failed to get index df")
+# print("date_range", df["trade_date"].min(), df["trade_date"].max())
+# return {"status", "ok"}
