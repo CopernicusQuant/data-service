@@ -10,13 +10,6 @@ from src.config import FetcherConfig
 
 logger = logging.getLogger(__name__)
 
-# we just hardcode these four index here
-INDEX_LIST = [
-    "RUT",  # Russell 2000 Index
-    "SPX",  # S&P 500 Index
-    "DJI",  # Dow Jones Industrial Average
-    "IXIC",  # NASDAQ Composite Index
-]
 
 DEFAULT_DATE_START = "20060101"  # we only fetch 20 years data
 
@@ -32,7 +25,6 @@ class StockDataFetcher:
         ts.set_token(tushare_token)
         self.tushare_pro = ts.pro_api()
         self.stock_list_df = stock_list_df
-        self.index_list = INDEX_LIST
 
     def get_us_daily(
         self, ts_code: str, start_date: str = DEFAULT_DATE_START, end_date: str = ""
@@ -140,7 +132,7 @@ class StockDataFetcher:
                         "amount",
                     ],
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 exception = e
                 try_times += 1
                 logger.warning(
@@ -198,7 +190,7 @@ class StockDataFetcher:
                         "vol",
                     ],
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 exception = e
                 try_times += 1
                 logger.warning(

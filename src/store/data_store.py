@@ -9,6 +9,14 @@ INDEX_DIR = "index"
 STOCK_DIR = "stock"
 META_DIR = "meta"
 
+# we just hardcode these four index here
+INDEX_LIST = [
+    "RUT",  # Russell 2000 Index
+    "SPX",  # S&P 500 Index
+    "DJI",  # Dow Jones Industrial Average
+    "IXIC",  # NASDAQ Composite Index
+]
+
 
 class StockDataStore:
     def __init__(self, config: StoreConfig):
@@ -27,6 +35,7 @@ class StockDataStore:
             self.stock_list_df = self.load_stock_list()
         except Exception as exc:
             raise RuntimeError("Required stock list file could not be loaded") from exc
+        self.index_list = INDEX_LIST
 
     def load_stock_list(self) -> pd.DataFrame:
         """
@@ -121,6 +130,12 @@ class StockDataStore:
         start_date: str | None = None,
         end_date: str | None = None,
     ) -> pd.DataFrame:
+        """
+        Read Stock DataFrom from the R2 Storage
+
+        Returns:
+            pd.DataFrame
+        """
         path = self._stock_path(ts_code)
         file_info = self.fs.get_file_info(path)
         if file_info.type != fs.FileType.File:
@@ -134,5 +149,59 @@ class StockDataStore:
             data = data[data["trade_date"] <= end_date]
         return data.sort_values("trade_date").reset_index(drop=True)
 
+    def save_index(
+        self, index_df: pd.DataFrame, refresh: bool = False
+    ) -> tuple[str, int]:
+        """
+        Merge daily data into one Parquet object for a single index
+        and upload it to Cloudflare R2
+
+        Args:
+            stock_df: the fetched index dataframe
+            refresh: if `True`, replace the existing data
+
+        Returns:
+            The R2 object path written
+            The number of record
+        """
+        required_columns = {"ts_code", "trade_date"}
+        missing_columns = required_columns - set(index_df.columns)
+        if missing_columns:
+            raise ValueError(
+                f"Stock data is missing required columns: {missing_columns}"
+            )
+        if index_df.empty:
+            raise ValueError("Empty df received")
+        # ensure there's only one index code presenting
+        index_codes = index_df["ts_code"].dropna().unique()
+        if len(index_codes) != 1:
+            raise ValueError(
+                f"save_index expects data has exactly one index, received {len(index_codes)} codes"
+            )
+        code = index_codes[0]
+        path = self._index_path(code)
+
+        data = index_df.copy()
+        if refresh == False:
+            # Merge existing R2 data with the latest fetched data
+            file_info = self.fs.get_file_info(path)
+            if file_info.type == fs.FileType.File:
+                with self.fs.open_input_file(path) as source:
+                    old_data = pq.read_table(source).to_pandas()
+                data = pd.concat([old_data, data], ignore_index=True)
+        data = (
+            data.drop_duplicates(subset="trade_date", keep="last")
+            .sort_values("trade_date")
+            .reset_index(drop=True)
+        )
+        # save data to r2 storage
+        table = pa.Table.from_pandas(data, preserve_index=False)
+        with self.fs.open_output_stream(path) as sink:
+            pq.write_table(table, sink, compression="zstd", compression_level=3)
+        return path, len(data)
+
     def _stock_path(self, ts_code: str) -> str:
         return f"{self.bucket_name}/{STOCK_DIR}/{ts_code}.parquet"
+
+    def _index_path(self, ts_code: str) -> str:
+        return f"{self.bucket_name}/{INDEX_DIR}/{ts_code}.parquet"

@@ -1,4 +1,3 @@
-import logging
 import uuid
 from datetime import datetime
 from enum import StrEnum
@@ -58,7 +57,8 @@ class DataRecord(BaseModel):
     index_count: int = 0
     total_stock_rows: int = 0
     total_index_rows: int = 0
-    updated_at: datetime = Field(default_factory=_server_time_now)
+    stock_updated_at: datetime | None = None
+    index_updated_at: datetime | None = None
 
 
 class ServiceMetadata(BaseModel):
@@ -143,10 +143,11 @@ class MetaStore:
             if job_type in [JobType.UPDATE_STOCKS, JobType.GET_STOCKS]:
                 record_data.stock_count = total_records
                 record_data.total_stock_rows = total_rows
+                record_data.stock_updated_at = _server_time_now()
             elif job_type in [JobType.GET_INDEX, JobType.UPDATE_INDEX]:
                 record_data.index_count = total_records
                 record_data.total_index_rows = total_rows
-            record_data.updated_at = _server_time_now()
+                record_data.index_updated_at = _server_time_now()
 
             transaction.set(self.job_record_ref, job_data.model_dump(mode="python"))
             transaction.set(self.data_record_ref, record_data.model_dump(mode="python"))
@@ -183,6 +184,9 @@ class MetaStore:
         return ServiceMetadata(job=job, data=data)
 
     def _set_job_interrupted(self) -> JobRecord:
+        """
+        At the time server started, if there's a "running" job, we mark it as interrupted
+        """
         transaction = self.db.transaction()
 
         @firestore.transactional

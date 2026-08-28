@@ -2,6 +2,7 @@ import json
 import logging
 import sys
 from datetime import datetime
+from hashlib import new
 from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
@@ -9,8 +10,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException
 from src.config import load_config
 from src.fetcher import StockDataFetcher
 from src.handler import DataHandler
-from src.store import MetaStore, StockDataStore
-from src.store.meta_store import JobType
+from src.store import JobType, MetaStore, StockDataStore
 
 
 # Format python logger to Google CloudRun-compatible log format
@@ -71,15 +71,14 @@ async def create_stock_job(background_tasks: BackgroundTasks):
     new_job = meta_store.create_job(job_type=JobType.GET_STOCKS)
     if new_job is None:
         raise HTTPException(status_code=409, detail="A job is currently running")
-    background_tasks.add_task(data_handler.run_get_stock_data, new_job.id)
+    background_tasks.add_task(data_handler.run_get_stock_data, new_job)
     return {"job_id": new_job.id, "status": new_job.status}
 
 
-# experimental
-# @app.get("/index", status_code=200)
-# async def get_index():
-#     df = fetcher.get_us_index("DJI")
-#     if df is None:
-#         raise HTTPException(status_code=500, detail="failed to get index df")
-# print("date_range", df["trade_date"].min(), df["trade_date"].max())
-# return {"status", "ok"}
+@app.get("/jobs/indices", status_code=202)
+async def create_index_job(background_task: BackgroundTasks):
+    new_job = meta_store.create_job(job_type=JobType.GET_INDEX)
+    if new_job is None:
+        raise HTTPException(status_code=409, detail="A job is currently running")
+    background_task.add_task(data_handler.run_get_index_data, new_job)
+    return {"job_id": new_job.id, "status": new_job.status}
