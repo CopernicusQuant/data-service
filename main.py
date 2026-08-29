@@ -2,7 +2,6 @@ import json
 import logging
 import sys
 from datetime import datetime
-from hashlib import new
 from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
