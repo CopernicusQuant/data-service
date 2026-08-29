@@ -10,13 +10,6 @@ from src.config import FetcherConfig
 
 logger = logging.getLogger(__name__)
 
-# we just hardcode these four index here
-INDEX_LIST = [
-    "RUT",  # Russell 2000 Index
-    "SPX",  # S&P 500 Index
-    "DJI",  # Dow Jones Industrial Average
-    "IXIC",  # NASDAQ Composite Index
-]
 
 DEFAULT_DATE_START = "20060101"  # we only fetch 20 years data
 
@@ -32,7 +25,6 @@ class StockDataFetcher:
         ts.set_token(tushare_token)
         self.tushare_pro = ts.pro_api()
         self.stock_list_df = stock_list_df
-        self.index_list = INDEX_LIST
 
     def get_us_daily(
         self, ts_code: str, start_date: str = DEFAULT_DATE_START, end_date: str = ""
@@ -83,19 +75,31 @@ class StockDataFetcher:
     def get_us_index(
         self, ts_code: str, start_date: str = DEFAULT_DATE_START, end_date: str = ""
     ) -> pd.DataFrame | None:
+        """
+        Get US market-specific index data
+        The index data were fetched through pagination, so if any page failed, we consider
+        the index fetching failed to ensure the data integrity
+
+        Returns:
+            pd.DataFrame if fetch succeeded, otherwise None
+        """
         if not ts_code:
             raise ValueError("ts_code is required for us index data")
         all_dfs = []
         limit = 4000
         offset = 0
         while True:
-            df = self._get_us_index_with_retry(
+            success, df = self._get_us_index_with_retry(
                 ts_code=ts_code,
                 start_date=start_date,
                 end_date=end_date,
                 limit=limit,
                 offset=offset,
             )
+            # if any page failed, we break the fetching and return None, to ensure
+            # the data integrity
+            if not success:
+                return None
             if df is None:
                 break
             all_dfs.append(df)
@@ -140,7 +144,7 @@ class StockDataFetcher:
                         "amount",
                     ],
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 exception = e
                 try_times += 1
                 logger.warning(
@@ -166,11 +170,14 @@ class StockDataFetcher:
         end_date: str,
         limit: int | None = None,
         offset: int | None = None,
-    ) -> pd.DataFrame | None:
+    ) -> tuple[bool, pd.DataFrame | None]:
         """
-        Fetch US index data from Tushare, with retry
+        Fetch US index data from Tushare, with retry. Different from the stock data fetching method,
+        the index data needs to be fetched through pagination, so we should return the `success` value
+        for the other function to check if every single page were successfully fetched
 
         Returns:
+            success True if the fetching is success False other wise.
             pd.DataFrame if fetched successfully, otherwise None
         """
         try_times = 0
@@ -198,7 +205,7 @@ class StockDataFetcher:
                         "vol",
                     ],
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 exception = e
                 try_times += 1
                 logger.warning(
@@ -211,8 +218,8 @@ class StockDataFetcher:
                 break
         if not success:
             logger.error(f"Failed to fetch index_global of {ts_code}: {exception!s}")
-            return None
+            return success, None
         if index_df.empty:
-            logger.warning(f"Got empty data {ts_code}")
-            return None
-        return index_df
+            logger.warning(f"Got empty data {ts_code}, offset {offset}, limit {limit}")
+            return success, None
+        return success, index_df
