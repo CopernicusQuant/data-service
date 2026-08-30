@@ -1,6 +1,6 @@
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -79,9 +79,12 @@ class StockDataFetcher:
             suffixes=("", "_adj"),
         )
         df = df.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
-        df["cum_adjfactor"] = df.groupby("ts_code")["cum_adjfactor"].ffill().bfill()
+        df["cum_adjfactor"] = df.groupby("ts_code")["cum_adjfactor"].ffill(limit=5)
         if df["cum_adjfactor"].isna().any():
-            raise ValueError(f"found missing adj factors in stock {ts_code}")
+            missing_dates = df.loc[df["cum_adjfactor"].isna(), "trade_date"].tolist()
+            raise ValueError(
+                f"found missing adj factors in stock {ts_code} on dates: {missing_dates}"
+            )
         # compute adjusted prices
         for col in ["high", "low", "open", "close", "vwap"]:
             df[f"adj_{col}"] = df[col] * df["cum_adjfactor"]
