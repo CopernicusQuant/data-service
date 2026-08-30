@@ -19,6 +19,7 @@ class StoreConfig(BaseModel):
     secret_access_key: str
     bucket_name: str
     bucket_endpoint: str
+    runtime_env: str
 
 
 class MetaConfig(BaseModel):

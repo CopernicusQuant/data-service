@@ -1,6 +1,9 @@
+from io import StringIO
+
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+import requests
 from pyarrow import csv, fs
 
 from src.config import StoreConfig
@@ -8,6 +11,8 @@ from src.config import StoreConfig
 INDEX_DIR = "index"
 STOCK_DIR = "stock"
 META_DIR = "meta"
+
+STOCK_LIST_FILENAME_PREFIX = "stock_list"
 
 # we just hardcode these four index here
 INDEX_LIST = [
@@ -31,11 +36,20 @@ class StockDataStore:
         )
         # load stock list to the system
         self.bucket_name = config.bucket_name
+        if config.runtime_env not in ["prod", "dev"]:
+            raise ValueError("runtime_env variable should be 'prod' or 'dev'")
+        self.runtime_env = config.runtime_env
+        self.index_list = INDEX_LIST
         try:
             self.stock_list_df = self.load_stock_list()
-        except Exception as exc:
-            raise RuntimeError("Required stock list file could not be loaded") from exc
-        self.index_list = INDEX_LIST
+        except Exception as load_exc:  # noqa BLE001
+            try:
+                self.stock_list_df = self._refresh_sp_500_list()
+            except Exception as refresh_exc:
+                raise RuntimeError(
+                    f"failed to load stock list {load_exc!s}"
+                    f"failed to refresh stock list {refresh_exc!s}"
+                ) from refresh_exc
 
     def load_stock_list(self) -> pd.DataFrame:
         """
@@ -45,12 +59,13 @@ class StockDataStore:
         Returns:
             pd.DataFrame if loaded successfully, otherwise raises
         """
-        stock_list_path = f"{self.bucket_name}/{META_DIR}/stock_list_small.csv"
-        with self.fs.open_input_file(stock_list_path) as source:
-            stock_list = csv.read_csv(source)
-        if stock_list.num_rows == 0:
-            raise ValueError(f"stock list file is empty: ${stock_list_path}")
-        return stock_list.to_pandas().set_index("ts_code", drop=False)
+        with self.fs.open_input_file(self._stock_list_path()) as source:
+            stock_list = (
+                csv.read_csv(source).to_pandas().set_index("ts_code", drop=False)
+            )
+        if len(stock_list) == 0:
+            raise ValueError(f"stock list file is empty: ${self._stock_list_path()}")
+        return stock_list
 
     def list_stock_tickers(self, num: int | None = None) -> list[str]:
         """
@@ -205,3 +220,37 @@ class StockDataStore:
 
     def _index_path(self, ts_code: str) -> str:
         return f"{self.bucket_name}/{INDEX_DIR}/{ts_code}.parquet"
+
+    def _stock_list_path(self) -> str:
+        return f"{self.bucket_name}/{META_DIR}/{STOCK_LIST_FILENAME_PREFIX}_{self.runtime_env}.csv"
+
+    def _refresh_sp_500_list(self) -> pd.DataFrame:
+        """
+        Get S&P 500 stock list from wikipedia and rename columns
+
+        Returns
+            pd.DataFrame
+        """
+        sp_500_url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        headers = {"User-Agent": "data-service/1.0 (contact: your-email@example.com)"}
+        response = requests.get(sp_500_url, headers=headers, timeout=5)
+        response.raise_for_status()
+        sp_500 = pd.read_html(StringIO(response.text))[0]
+        # rename columns
+        sp_500.columns = [
+            "ts_code",
+            "company_name",
+            "sector",
+            "sub_industry",
+            "headquarters",
+            "list_date",
+            "cik",
+            "founded",
+        ]
+        sp_500["list_date"] = pd.to_datetime(sp_500["list_date"]).dt.strftime("%Y%m%d")
+        if self.runtime_env == "dev":
+            sp_500 = sp_500[:50]
+        table = pa.Table.from_pandas(sp_500, preserve_index=False)
+        with self.fs.open_output_stream(self._stock_list_path()) as sink:
+            csv.write_csv(table, sink)
+        return sp_500.set_index("ts_code", drop=False)
