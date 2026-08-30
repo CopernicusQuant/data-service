@@ -232,7 +232,7 @@ class StockDataStore:
             pd.DataFrame
         """
         sp_500_url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-        headers = {"User-Agent": "data-service/1.0 (contact: your-email@example.com)"}
+        headers = {"User-Agent": "data-service/1.0 (contact: email@example.com)"}
         response = requests.get(sp_500_url, headers=headers, timeout=5)
         response.raise_for_status()
         sp_500 = pd.read_html(StringIO(response.text))[0]
@@ -243,11 +243,13 @@ class StockDataStore:
             "sector",
             "sub_industry",
             "headquarters",
-            "list_date",
+            "date_added",
             "cik",
             "founded",
         ]
-        sp_500["list_date"] = pd.to_datetime(sp_500["list_date"]).dt.strftime("%Y%m%d")
+        sp_500["date_added"] = pd.to_datetime(sp_500["date_added"]).dt.strftime(
+            "%Y%m%d"
+        )
         if self.runtime_env == "dev":
             sp_500 = sp_500[:50]
         table = pa.Table.from_pandas(sp_500, preserve_index=False)
