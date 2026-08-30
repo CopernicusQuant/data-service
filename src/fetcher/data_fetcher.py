@@ -49,14 +49,10 @@ class StockDataFetcher:
                 "tushare us_daily(): either provide a ts_code or set the start/end date the same day"
             )
         # there can be ts_code reuse issue, so we need to refer to the stock's list date
-        if ts_code != "":
-            if ts_code not in self.stock_list_df.index:
-                raise KeyError(
-                    f"{ts_code} not in the stock list, check either the stock list or ts_code"
-                )
-            else:
-                stock_list_date = str(self.stock_list_df.loc[ts_code, "list_date"])
-                start_date = max(start_date, stock_list_date)
+        if ts_code != "" and ts_code not in self.stock_list_df.index:
+            raise KeyError(
+                f"{ts_code} not in the stock list, check either the stock list or ts_code"
+            )
 
         # get us daily data
         df_us_daily = self._get_us_daily_with_retry(

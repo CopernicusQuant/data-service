@@ -6,6 +6,7 @@ store:
   secret_access_key: "${R2_SECRET_ACCESS_KEY}"
   bucket_name: "${R2_BUCKET_NAME}"
   bucket_endpoint: "${R2_ENDPOINT}"
+  runtime_env: "${RUNTIME_ENV}"
 
 meta:
   meta_collection_name: "${FIREBASE_COLLECTION_NAME}"
