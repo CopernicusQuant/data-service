@@ -81,3 +81,11 @@ async def create_index_job(background_task: BackgroundTasks):
         raise HTTPException(status_code=409, detail="A job is currently running")
     background_task.add_task(data_handler.run_get_index_data, new_job)
     return {"job_id": new_job.id, "status": new_job.status}
+
+
+# @app.get("/test/stock")
+# async def test_stock():
+#     df = fetcher.get_us_daily(ts_code="WMT", start_date="20230601", end_date="20230610")
+#     if df is not None:
+#         print(df.head(10))
+#     return {"status": "ok"}

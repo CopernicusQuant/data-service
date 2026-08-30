@@ -11,7 +11,9 @@ from src.config import FetcherConfig
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_DATE_START = "20060101"  # we only fetch 20 years data
+DEFAULT_DATE_START = (
+    "20200101"  # we only fetch 6 years data for learning and experimenting
+)
 
 
 class StockDataFetcher:
@@ -46,11 +48,6 @@ class StockDataFetcher:
             raise ValueError(
                 "tushare us_daily(): either provide a ts_code or set the start/end date the same day"
             )
-        if (int(end_date) - int(start_date)) // 10000 > 23:
-            raise ValueError(
-                "tushare us_daily(): time span should not more than 23 years"
-            )
-
         # there can be ts_code reuse issue, so we need to refer to the stock's list date
         if ts_code != "":
             if ts_code not in self.stock_list_df.index:
@@ -61,15 +58,40 @@ class StockDataFetcher:
                 stock_list_date = str(self.stock_list_df.loc[ts_code, "list_date"])
                 start_date = max(start_date, stock_list_date)
 
-        df = self._get_us_daily_with_retry(
+        # get us daily data
+        df_us_daily = self._get_us_daily_with_retry(
             ts_code=ts_code, start_date=start_date, end_date=end_date
         )
-        if df is None:
+        if df_us_daily is None:
             return None
+        # get us accumulated adjust factor data
+        df_us_adj = self._get_us_adj_factor_with_retry(
+            ts_code=ts_code, start_date=start_date, end_date=end_date
+        )
+        if df_us_adj is None:
+            return None
+        # tushare missing some us_adj data, so we need to fill them in the backward manner
+        df = pd.merge(
+            df_us_daily,
+            df_us_adj,
+            on=["ts_code", "trade_date"],
+            how="left",
+            suffixes=("", "_adj"),
+        )
+        df = df.sort_values(["ts_code", "trade_date"]).reset_index(drop=True)
+        df["cum_adjfactor"] = df.groupby("ts_code")["cum_adjfactor"].ffill(limit=5)
+        if df["cum_adjfactor"].isna().any():
+            missing_dates = df.loc[df["cum_adjfactor"].isna(), "trade_date"].tolist()
+            raise ValueError(
+                f"found missing adj factors in stock {ts_code} on dates: {missing_dates}"
+            )
+        # compute adjusted prices
+        for col in ["high", "low", "open", "close", "vwap"]:
+            df[f"adj_{col}"] = df[col] * df["cum_adjfactor"]
+        # compute roe and total share
         df["roe"] = df["pb"] / df["pe"]
         df["total_share"] = df["total_mv"] / df["close"]
         df = df.rename(columns={"turnover_ratio": "turnover"})
-        df = df.sort_values("trade_date").reset_index(drop=True)
         return df
 
     def get_us_index(
@@ -133,15 +155,17 @@ class StockDataFetcher:
                     fields=[
                         "ts_code",
                         "trade_date",
-                        "open",
                         "close",
+                        "open",
                         "high",
                         "low",
+                        "vol",
+                        "amount",
+                        "vwap",
                         "turnover_ratio",
+                        "total_mv",
                         "pe",
                         "pb",
-                        "total_mv",
-                        "amount",
                     ],
                 )
             except Exception as e:  # noqa: BLE001
@@ -157,6 +181,51 @@ class StockDataFetcher:
                 break
         if not success:
             logger.error(f"Failed to fetch us_daily of {ts_code}: {exception!s}")
+            return None
+        if df.empty:
+            logger.warning(f"Got empty data {ts_code}")
+            return None
+        return df
+
+    def _get_us_adj_factor_with_retry(
+        self, ts_code: str, start_date: str, end_date: str
+    ) -> pd.DataFrame | None:
+        """
+        Fetch us stock accumulated adjust factor from Tushare, with retry
+
+        Returns:
+            pd.DataFrame if fetched successfully, None otherwise
+        """
+        try_times = 0
+        success = False
+        exception = None
+        while try_times < 3:
+            try:
+                # this api returns 8000 rows in maximum in one call
+                # can retrieve full data through pagination in the future
+                df = self.tushare_pro.us_adjfactor(
+                    ts_code=ts_code,
+                    start_date=start_date,
+                    end_date=end_date,
+                    fields=[
+                        "ts_code",
+                        "trade_date",
+                        "cum_adjfactor",
+                    ],
+                )
+            except Exception as e:  # noqa: BLE001
+                exception = e
+                try_times += 1
+                logger.warning(
+                    f"Fetch us_adjfactor exception {ts_code}:{exception!s}, retry time {try_times}"
+                )
+                time.sleep(30)
+                continue
+            else:
+                success = True
+                break
+        if not success:
+            logger.error(f"Failed to fetch us_adjfactor of {ts_code}: {exception!s}")
             return None
         if df.empty:
             logger.warning(f"Got empty data {ts_code}")
