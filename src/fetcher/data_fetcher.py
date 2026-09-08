@@ -84,6 +84,7 @@ class StockDataFetcher:
         # compute adjusted prices
         for col in ["high", "low", "open", "close", "vwap"]:
             df[f"adj_{col}"] = df[col] * df["cum_adjfactor"]
+        df["adj_vol"] = df["vol"] / df["cum_adjfactor"]
         # compute roe and total share
         df["roe"] = df["pb"] / df["pe"]
         df["total_share"] = df["total_mv"] / df["close"]
