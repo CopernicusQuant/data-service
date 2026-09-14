@@ -9,6 +9,7 @@ dependencies = [
     "fastmcp>=3.4.7",
     "google-api-core<2.35.0",
     "google-cloud-firestore>=2.29.0",
+    "joblib>=1.6.0",
     "pyarrow>=25.0.1",
     "pydantic>=2.13.4",
     "python-dotenv>=1.2.3",
