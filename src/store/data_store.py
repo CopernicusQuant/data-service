@@ -10,16 +10,14 @@ from src.config import StoreConfig
 
 INDEX_DIR = "index"
 STOCK_DIR = "stock"
+FEATURE_DIR = "feature"
 META_DIR = "meta"
 
 STOCK_LIST_FILENAME_PREFIX = "stock_list"
 
-# we just hardcode these four index here
+# at this time we only care about sp500 index
 INDEX_LIST = [
-    "RUT",  # Russell 2000 Index
     "SPX",  # S&P 500 Index
-    "DJI",  # Dow Jones Industrial Average
-    "IXIC",  # NASDAQ Composite Index
 ]
 
 
@@ -60,9 +58,7 @@ class StockDataStore:
             pd.DataFrame if loaded successfully, otherwise raises
         """
         with self.fs.open_input_file(self._stock_list_path()) as source:
-            stock_list = (
-                csv.read_csv(source).to_pandas().set_index("ts_code", drop=False)
-            )
+            stock_list = csv.read_csv(source).to_pandas()
         if len(stock_list) == 0:
             raise ValueError(f"stock list file is empty: ${self._stock_list_path()}")
         return stock_list
@@ -80,7 +76,7 @@ class StockDataStore:
         return stocks
 
     def save_stock(
-        self, stock_df: pd.DataFrame, refresh: bool = False
+        self, stock_df: pd.DataFrame, refresh: bool = True
     ) -> tuple[str, int]:
         """
         Merge daily data into one Parquet object for a single ticker
@@ -164,6 +160,23 @@ class StockDataStore:
             data = data[data["trade_date"] <= end_date]
         return data.sort_values("trade_date").reset_index(drop=True)
 
+    def load_all_stocks(self) -> pd.DataFrame:
+        try:
+            all_stocks = pq.ParquetDataset(self._stock_path(), filesystem=self.fs)
+            table = all_stocks.read()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Could not load stock data from {self._stock_path()}"
+            ) from exc
+        try:
+            df = table.to_pandas()
+            df.set_index(["ts_code", "trade_date"], inplace=True)
+        except Exception as exc:
+            raise ValueError(
+                "Stock data is invalid: excepted 'ts_code' and 'trade_date' columns"
+            ) from exc
+        return df
+
     def save_index(
         self, index_df: pd.DataFrame, refresh: bool = False
     ) -> tuple[str, int]:
@@ -215,11 +228,33 @@ class StockDataStore:
             pq.write_table(table, sink, compression="zstd", compression_level=3)
         return path, len(data)
 
-    def _stock_path(self, ts_code: str) -> str:
+    def save_features(self, combined_features_df: pd.DataFrame) -> None:
+        if combined_features_df.index.nlevels != 2:
+            raise ValueError(
+                "The calculated feature dataframe should have `ts_code` and `trade_date` as indices"
+            )
+        for ts_code, feature_df in combined_features_df.groupby(
+            level="ts_code", sort=False
+        ):
+            table = pa.Table.from_pandas(feature_df.reset_index(), preserve_index=False)
+            feature_path = self._feature_path(ts_code=ts_code)
+            with self.fs.open_output_stream(feature_path) as sink:
+                pq.write_table(table, sink, compression="zstd", compression_level=3)
+
+    def _stock_path(self, ts_code: str | None = None) -> str:
+        if ts_code is None:
+            return f"{self.bucket_name}/{STOCK_DIR}"
         return f"{self.bucket_name}/{STOCK_DIR}/{ts_code}.parquet"
 
-    def _index_path(self, ts_code: str) -> str:
+    def _index_path(self, ts_code: str | None = None) -> str:
+        if ts_code is None:
+            return f"{self.bucket_name}/{INDEX_DIR}"
         return f"{self.bucket_name}/{INDEX_DIR}/{ts_code}.parquet"
+
+    def _feature_path(self, ts_code: str | None = None) -> str:
+        if ts_code is None:
+            return f"{self.bucket_name}/{FEATURE_DIR}"
+        return f"{self.bucket_name}/{FEATURE_DIR}/{ts_code}.parquet"
 
     def _stock_list_path(self) -> str:
         return f"{self.bucket_name}/{META_DIR}/{STOCK_LIST_FILENAME_PREFIX}_{self.runtime_env}.csv"
@@ -255,4 +290,4 @@ class StockDataStore:
         table = pa.Table.from_pandas(sp_500, preserve_index=False)
         with self.fs.open_output_stream(self._stock_list_path()) as sink:
             csv.write_csv(table, sink)
-        return sp_500.set_index("ts_code", drop=False)
+        return sp_500

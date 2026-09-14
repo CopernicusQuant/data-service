@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 
 from src.config import load_config
+from src.feature import FeatureCalculator
 from src.fetcher import StockDataFetcher
 from src.handler import DataHandler
 from src.store import JobType, MetaStore, StockDataStore
@@ -53,8 +54,10 @@ except Exception:
 fetcher = StockDataFetcher(
     config=config.fetcher, stock_list_df=data_store.stock_list_df
 )
+feature_calculator = FeatureCalculator()
 data_handler = DataHandler(
     fetcher=fetcher,
+    calculator=feature_calculator,
     data_store=data_store,
     meta_store=meta_store,
 )
@@ -81,3 +84,9 @@ async def create_index_job(background_task: BackgroundTasks):
         raise HTTPException(status_code=409, detail="A job is currently running")
     background_task.add_task(data_handler.run_get_index_data, new_job)
     return {"job_id": new_job.id, "status": new_job.status}
+
+
+@app.get("/jobs/features", status_code=202)
+async def create_features_job():
+    # will complete this one in the next step
+    data_handler.run_update_features()

@@ -1,8 +1,10 @@
 import logging
 import time
 
+import pandas as pd
 from pydantic import BaseModel
 
+from src.feature import FeatureCalculator
 from src.fetcher import StockDataFetcher
 from src.store import JobResult, MetaStore, StockDataStore
 from src.store.meta_store import JobRecord, JobType
@@ -24,12 +26,14 @@ class DataHandler:
     def __init__(
         self,
         fetcher: StockDataFetcher,
+        calculator: FeatureCalculator,
         data_store: StockDataStore,
         meta_store: MetaStore,
     ):
         self.fetcher = fetcher
         self.data_store = data_store
         self.meta_store = meta_store
+        self.calculator = calculator
 
     def run_get_stock_data(self, job: JobRecord):
         """
@@ -72,6 +76,30 @@ class DataHandler:
             total_records=result.total_records,
         )
         logger.info(f"{JobType.GET_INDEX}: {job.id} completed")
+
+    def run_update_features(self) -> pd.DataFrame:
+        try:
+            all_stocks = self.data_store.load_all_stocks()
+        except (RuntimeError, ValueError) as exc:
+            logger.error(f"Failed to load all stocks: {exc!s}")
+            raise RuntimeError("Failed to load all stocks")
+
+        try:
+            stocks_info = self.data_store.stock_list_df
+            all_features = self.calculator.compute_all_stock_features(
+                combined_stock_df=all_stocks, combined_info_df=stocks_info
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"Failed to calculate features for all stocks: {exc!s}")
+            raise RuntimeError("Failed to calculate features for all stocks")
+
+        try:
+            self.data_store.save_features(all_features)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"Failed to save calculate features to R2: {exc!s}")
+            raise RuntimeError("Failed to save calculated feature to R2")
+
+        return all_features
 
     def _get_stock_data(
         self, start_date: str | None = None, end_date: str | None = None
