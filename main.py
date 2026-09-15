@@ -4,7 +4,7 @@ import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import BackgroundTasks, FastAPI
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel
 
 from src.config import load_config
@@ -65,6 +65,20 @@ data_handler = DataHandler(
 @app.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/stocks/{ts_code}")
+def get_stock_and_features(ts_code: str) -> dict:
+    try:
+        stock_df, feature_df = data_handler.get_stock_and_feature(ts_code)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return {
+        "ts_code": ts_code,
+        "stock": json.loads(stock_df.to_json(orient="records", date_format="iso")),
+        "features": json.loads(feature_df.to_json(orient="records", date_format="iso")),
+    }
 
 
 class JobAcceptedResponse(BaseModel):

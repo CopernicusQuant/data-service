@@ -1,3 +1,4 @@
+from functools import lru_cache
 from io import StringIO
 
 import pandas as pd
@@ -19,6 +20,8 @@ STOCK_LIST_FILENAME_PREFIX = "stock_list"
 INDEX_LIST = [
     "SPX",  # S&P 500 Index
 ]
+
+STOCK_CACHE_SIZE = 20
 
 
 class StockDataStore:
@@ -49,6 +52,54 @@ class StockDataStore:
                     f"failed to refresh stock list {refresh_exc!s}"
                 ) from refresh_exc
 
+    def read_stock(self, ts_code: str) -> pd.DataFrame:
+        """
+        Read single stock data from LRU cache. The returned data should be
+        a copy for the cached data.
+
+        Args:
+            ts_code: str, stock ticker
+        Returns:
+            pd.DataFrame, the full stock data record
+        """
+        return self._read_stock_cached(ts_code).copy(deep=True)
+
+    def read_feature(self, ts_code: str) -> pd.DataFrame:
+        """
+        Read single stock feature from LRU cache. The returned data should be
+        a copy for the cached data.
+
+        Args:
+            ts_code: str, stock ticker
+        Returns:
+            pd.DataFrame, the full stock feature record
+        """
+        return self._read_feature_cached(ts_code).copy(deep=True)
+
+    def clear_stock_cache(self):
+        """
+        External method to clear all of stock data caches
+        """
+        self._read_stock_cached.cache_clear()
+
+    def clear_feature_cache(self):
+        """
+        External method to clear all of feature data caches
+        """
+        self._read_feature_cached.cache_clear()
+
+    def list_stock_tickers(self, num: int | None = None) -> list[str]:
+        """
+        Get stock tickers from the memory stock list data
+
+        Args:
+            num: number of stock tickers to retrieve
+        """
+        stocks = self.stock_list_df["ts_code"].dropna().astype(str).tolist()
+        if num != None and num > 0:
+            return stocks[:num]
+        return stocks
+
     def load_stock_list(self) -> pd.DataFrame:
         """
         load stock list from r2 storage. The stock list is a relatively static file
@@ -65,17 +116,25 @@ class StockDataStore:
             raise ValueError(f"stock list file is empty: ${self._stock_list_path()}")
         return stock_list
 
-    def list_stock_tickers(self, num: int | None = None) -> list[str]:
+    def load_all_stocks(self) -> pd.DataFrame:
         """
-        Get stock tickers from the memory stock list data
-
-        Args:
-            num: number of stock tickers to retrieve
+        Load all stock data from R2 storage
         """
-        stocks = self.stock_list_df["ts_code"].dropna().astype(str).tolist()
-        if num != None and num > 0:
-            return stocks[:num]
-        return stocks
+        try:
+            all_stocks = pq.ParquetDataset(self._stock_path(), filesystem=self.fs)
+            table = all_stocks.read()
+        except Exception as exc:
+            raise RuntimeError(
+                f"Could not load stock data from {self._stock_path()}"
+            ) from exc
+        try:
+            df = table.to_pandas()
+            df.set_index(["ts_code", "trade_date"], inplace=True)
+        except Exception as exc:
+            raise ValueError(
+                "Stock data is invalid: excepted 'ts_code' and 'trade_date' columns"
+            ) from exc
+        return df
 
     def save_stock(
         self, stock_df: pd.DataFrame, refresh: bool = True
@@ -137,40 +196,6 @@ class StockDataStore:
             )
         return path, len(data)
 
-    def read_stock(
-        self,
-        ts_code: str,
-    ) -> pd.DataFrame:
-        """
-        Read Stock DataFrame from the R2 Storage
-
-        Returns:
-            pd.DataFrame
-        """
-        path = self._stock_path(ts_code)
-        with self.fs.open_input_stream(path) as source:
-            payload = source.read()
-        table = pq.read_table(pa.BufferReader(payload))
-        data = table.to_pandas()
-        return data.sort_values("trade_date").reset_index(drop=True)
-
-    def load_all_stocks(self) -> pd.DataFrame:
-        try:
-            all_stocks = pq.ParquetDataset(self._stock_path(), filesystem=self.fs)
-            table = all_stocks.read()
-        except Exception as exc:
-            raise RuntimeError(
-                f"Could not load stock data from {self._stock_path()}"
-            ) from exc
-        try:
-            df = table.to_pandas()
-            df.set_index(["ts_code", "trade_date"], inplace=True)
-        except Exception as exc:
-            raise ValueError(
-                "Stock data is invalid: excepted 'ts_code' and 'trade_date' columns"
-            ) from exc
-        return df
-
     def save_index(
         self, index_df: pd.DataFrame, refresh: bool = False
     ) -> tuple[str, int]:
@@ -222,24 +247,13 @@ class StockDataStore:
             pq.write_table(table, sink, compression="zstd", compression_level=3)
         return path, len(data)
 
-    def read_feature(
-        self,
-        ts_code: str,
-    ) -> pd.DataFrame:
-        """
-        Read Feature DataFrame from the R2 Storage
-
-        Returns:
-            pd.DataFrame
-        """
-        path = self._feature_path(ts_code)
-        with self.fs.open_input_stream(path) as source:
-            payload = source.read()
-        table = pq.read_table(pa.BufferReader(payload))
-        data = table.to_pandas()
-        return data.sort_values("trade_date").reset_index(drop=True)
-
     def save_features(self, combined_features_df: pd.DataFrame) -> None:
+        """
+        Save the calculated features to the R2 storage.
+
+        Args:
+            combined_features_df: pd.DataFrame, the complete features of all stocks
+        """
         if combined_features_df.index.nlevels != 2:
             raise ValueError(
                 "The calculated feature dataframe should have `ts_code` and `trade_date` as indices"
@@ -302,3 +316,39 @@ class StockDataStore:
         with self.fs.open_output_stream(self._stock_list_path()) as sink:
             csv.write_csv(table, sink)
         return sp_500
+
+    @lru_cache(maxsize=STOCK_CACHE_SIZE)  # noqa: B019
+    def _read_stock_cached(
+        self,
+        ts_code: str,
+    ) -> pd.DataFrame:
+        """
+        Read and Cache Stock DataFrame from the R2 Storage
+
+        Returns:
+            pd.DataFrame
+        """
+        path = self._stock_path(ts_code)
+        with self.fs.open_input_stream(path) as source:
+            payload = source.read()
+        table = pq.read_table(pa.BufferReader(payload))
+        data = table.to_pandas()
+        return data.sort_values("trade_date").reset_index(drop=True)
+
+    @lru_cache(maxsize=STOCK_CACHE_SIZE)  # noqa: B019
+    def _read_feature_cached(
+        self,
+        ts_code: str,
+    ) -> pd.DataFrame:
+        """
+        Read and Cache Feature DataFrame from the R2 Storage
+
+        Returns:
+            pd.DataFrame
+        """
+        path = self._feature_path(ts_code)
+        with self.fs.open_input_stream(path) as source:
+            payload = source.read()
+        table = pq.read_table(pa.BufferReader(payload))
+        data = table.to_pandas()
+        return data.sort_values("trade_date").reset_index(drop=True)
