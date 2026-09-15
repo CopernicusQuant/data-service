@@ -58,7 +58,9 @@ class StockDataStore:
             pd.DataFrame if loaded successfully, otherwise raises
         """
         with self.fs.open_input_file(self._stock_list_path()) as source:
-            stock_list = csv.read_csv(source).to_pandas()
+            stock_list = (
+                csv.read_csv(source).to_pandas().set_index("ts_code", drop=False)
+            )
         if len(stock_list) == 0:
             raise ValueError(f"stock list file is empty: ${self._stock_list_path()}")
         return stock_list
@@ -138,26 +140,18 @@ class StockDataStore:
     def read_stock(
         self,
         ts_code: str,
-        start_date: str | None = None,
-        end_date: str | None = None,
     ) -> pd.DataFrame:
         """
-        Read Stock DataFrom from the R2 Storage
+        Read Stock DataFrame from the R2 Storage
 
         Returns:
             pd.DataFrame
         """
         path = self._stock_path(ts_code)
-        file_info = self.fs.get_file_info(path)
-        if file_info.type != fs.FileType.File:
-            raise FileNotFoundError(f"Stock data does not exist: {path}")
-        with self.fs.open_input_file(path) as source:
-            table = pq.read_table(source)
+        with self.fs.open_input_stream(path) as source:
+            payload = source.read()
+        table = pq.read_table(pa.BufferReader(payload))
         data = table.to_pandas()
-        if start_date:
-            data = data[data["trade_date"] >= start_date]
-        if end_date:
-            data = data[data["trade_date"] <= end_date]
         return data.sort_values("trade_date").reset_index(drop=True)
 
     def load_all_stocks(self) -> pd.DataFrame:
@@ -227,6 +221,23 @@ class StockDataStore:
         with self.fs.open_output_stream(path) as sink:
             pq.write_table(table, sink, compression="zstd", compression_level=3)
         return path, len(data)
+
+    def read_feature(
+        self,
+        ts_code: str,
+    ) -> pd.DataFrame:
+        """
+        Read Feature DataFrame from the R2 Storage
+
+        Returns:
+            pd.DataFrame
+        """
+        path = self._feature_path(ts_code)
+        with self.fs.open_input_stream(path) as source:
+            payload = source.read()
+        table = pq.read_table(pa.BufferReader(payload))
+        data = table.to_pandas()
+        return data.sort_values("trade_date").reset_index(drop=True)
 
     def save_features(self, combined_features_df: pd.DataFrame) -> None:
         if combined_features_df.index.nlevels != 2:

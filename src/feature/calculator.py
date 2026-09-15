@@ -39,7 +39,7 @@ class FeatureCalculator:
             result.set_index(["ts_code", "trade_date"], inplace=True)
             return result
 
-        results = Parallel(n_jobs=4, backend="threading")(
+        results = Parallel(n_jobs=4, verbose=1, backend="threading")(
             delayed(_compute_per_stock)(group) for _, group in grouped
         )
         result = pd.concat([r for r in results if r is not None], axis=0)

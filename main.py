@@ -4,13 +4,14 @@ import sys
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI
+from pydantic import BaseModel
 
 from src.config import load_config
 from src.feature import FeatureCalculator
 from src.fetcher import StockDataFetcher
 from src.handler import DataHandler
-from src.store import JobType, MetaStore, StockDataStore
+from src.store import StockDataStore
 
 
 # Format python logger to Google CloudRun-compatible log format
@@ -47,7 +48,6 @@ logger.info("Starting application")
 try:
     config = load_config()
     data_store = StockDataStore(config=config.store)
-    meta_store = MetaStore(config=config.meta)
 except Exception:
     logger.exception("Failed to start the service")
     sys.exit(1)
@@ -59,7 +59,6 @@ data_handler = DataHandler(
     fetcher=fetcher,
     calculator=feature_calculator,
     data_store=data_store,
-    meta_store=meta_store,
 )
 
 
@@ -68,25 +67,23 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/jobs/stocks", status_code=202)
+class JobAcceptedResponse(BaseModel):
+    job_type: str
+
+
+@app.get("/jobs/stocks", status_code=202, response_model=JobAcceptedResponse)
 async def create_stock_job(background_tasks: BackgroundTasks):
-    new_job = meta_store.create_job(job_type=JobType.GET_STOCKS)
-    if new_job is None:
-        raise HTTPException(status_code=409, detail="A job is currently running")
-    background_tasks.add_task(data_handler.run_get_stock_data, new_job)
-    return {"job_id": new_job.id, "status": new_job.status}
+    background_tasks.add_task(data_handler.run_update_stocks)
+    return JobAcceptedResponse(job_type="update stocks")
 
 
-@app.get("/jobs/indices", status_code=202)
+@app.get("/jobs/indices", status_code=202, response_model=JobAcceptedResponse)
 async def create_index_job(background_task: BackgroundTasks):
-    new_job = meta_store.create_job(job_type=JobType.GET_INDEX)
-    if new_job is None:
-        raise HTTPException(status_code=409, detail="A job is currently running")
-    background_task.add_task(data_handler.run_get_index_data, new_job)
-    return {"job_id": new_job.id, "status": new_job.status}
+    background_task.add_task(data_handler.run_update_indices)
+    return JobAcceptedResponse(job_type="update index")
 
 
-@app.get("/jobs/features", status_code=202)
-async def create_features_job():
-    # will complete this one in the next step
-    data_handler.run_update_features()
+@app.get("/jobs/features", status_code=202, response_model=JobAcceptedResponse)
+async def create_features_job(background_task: BackgroundTasks):
+    background_task.add_task(data_handler.run_update_features)
+    return JobAcceptedResponse(job_type="update features")
