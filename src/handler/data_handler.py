@@ -1,6 +1,8 @@
 import logging
 import time
 
+import pandas as pd
+
 from src.feature import FeatureCalculator
 from src.fetcher import StockDataFetcher
 from src.store import StockDataStore
@@ -18,6 +20,8 @@ class DataHandler:
         self.fetcher = fetcher
         self.data_store = data_store
         self.calculator = calculator
+
+    # ======== Job Runners ========
 
     def run_update_stocks(self):
         """
@@ -128,3 +132,15 @@ class DataHandler:
         end_time = time.perf_counter()
         time_spent = end_time - start_time
         return time_spent
+
+    # ======== Stock data retrievers ========
+    def get_stock_list(self):
+        pass
+
+    def get_stock_and_feature(self, ts_code: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+        ts_code = ts_code.upper()
+        if ts_code not in self.data_store.stock_list_df.index:
+            raise KeyError("Invalid stock ticker")
+        stock_df = self.data_store.read_stock(ts_code=ts_code).tail(10)
+        feature_df = self.data_store.read_feature(ts_code=ts_code).tail(10)
+        return stock_df, feature_df
