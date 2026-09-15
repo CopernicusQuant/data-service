@@ -76,6 +76,18 @@ class StockDataStore:
         """
         return self._read_feature_cached(ts_code).copy(deep=True)
 
+    def clear_stock_cache(self):
+        """
+        External method to clear all of stock data caches
+        """
+        self._read_stock_cached.cache_clear()
+
+    def clear_feature_cache(self):
+        """
+        External method to clear all of feature data caches
+        """
+        self._read_feature_cached.cache_clear()
+
     def list_stock_tickers(self, num: int | None = None) -> list[str]:
         """
         Get stock tickers from the memory stock list data
@@ -157,7 +169,6 @@ class StockDataStore:
         ts_code = tickers[0]
         path = self._stock_path(ts_code)
 
-        self._read_stock_cached.cache_clear()  # clear lru cache
         data = stock_df.copy()
         if refresh == False:
             # Merge existing R2 data with the latest fetched data
@@ -243,7 +254,6 @@ class StockDataStore:
         Args:
             combined_features_df: pd.DataFrame, the complete features of all stocks
         """
-        self._read_feature_cached.cache_clear()  # clear lru cache
         if combined_features_df.index.nlevels != 2:
             raise ValueError(
                 "The calculated feature dataframe should have `ts_code` and `trade_date` as indices"

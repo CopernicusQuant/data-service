@@ -49,7 +49,7 @@ class DataHandler:
             self.data_store.save_features(all_features)
         except Exception as exc:  # noqa: BLE001
             logger.error(f"Failed to update features: {exc!s}")
-
+        self.data_store.clear_feature_cache()  # clear features lru cache
         end_time = time.perf_counter()
         time_spent = end_time - start_time
         return time_spent
@@ -93,6 +93,7 @@ class DataHandler:
 
             if (i + 1) % 10 == 0:
                 logger.info(f"{(i + 1)}/{len(tickers)} task executed")
+        self.data_store.clear_stock_cache()  # clear stock lru cache
         end_time = time.perf_counter()
         time_spent = end_time - start_time
         return time_spent
