@@ -1,5 +1,6 @@
 import logging
 import time
+from enum import StrEnum
 
 import pandas as pd
 
@@ -8,6 +9,14 @@ from src.fetcher import StockDataFetcher
 from src.store import StockDataStore
 
 logger = logging.getLogger(__name__)
+
+
+class DataWindow(StrEnum):
+    days_30 = "30days"
+    days_60 = "60days"
+    years_1 = "1year"
+    years_3 = "3year"
+    all = "all"
 
 
 class DataHandler:
@@ -135,13 +144,55 @@ class DataHandler:
         return time_spent
 
     # ======== Stock data retrievers ========
-    def get_stock_list(self):
-        pass
+    def get_stock_list(self) -> dict[str]:
+        """
+        Get the full list of stock tickers and company names
+        format: [{ts_code: company_name}, {ts_code: company_name}, ...]
+        """
+        stock_list = self.data_store.stock_list_df["company_name"].to_dict()
+        return stock_list
 
-    def get_stock_and_feature(self, ts_code: str) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def get_stock_and_feature(
+        self, ts_code: str, window: DataWindow = DataWindow.days_30
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """
+        get a single stock's price data and feature data within a given period
+        (
+            NOTE: this part needs further optimization to remove the unnecessary columns
+            to reduce the response size (and time)
+        )
+        Args:
+            ts_code: str, the stock's ticker
+            window: DataWindow, the date range
+        Returns:
+            tuple[pd.DataFrame, pd.DataFrame]: [stock_df, feature_df]
+        """
         ts_code = ts_code.upper()
         if ts_code not in self.data_store.stock_list_df.index:
             raise KeyError("Invalid stock ticker")
-        stock_df = self.data_store.read_stock(ts_code=ts_code).tail(10)
-        feature_df = self.data_store.read_feature(ts_code=ts_code).tail(10)
+        stock_df = self.slice_df(
+            self.data_store.read_stock(ts_code=ts_code), window=window
+        )
+        feature_df = self.slice_df(
+            self.data_store.read_feature(ts_code=ts_code), window=window
+        )
         return stock_df, feature_df
+
+    def slice_df(self, df: pd.DataFrame, window: DataWindow) -> pd.DataFrame:
+        """
+        slice dataframe based on the given date window
+        """
+        approx_days_year = 252  # approximate trading days a year
+        match window:
+            case DataWindow.days_30:
+                return df.tail(30)
+            case DataWindow.days_60:
+                return df.tail(60)
+            case DataWindow.years_1:
+                return df.tail(approx_days_year)[::-2].iloc[::-1]
+            case DataWindow.years_3:
+                return df.tail(approx_days_year * 3)[::-6].iloc[::-1]
+            case DataWindow.all:
+                return df[::-10].iloc[::-1]
+            case _:
+                raise ValueError(f"Unsupported data window {window}")
