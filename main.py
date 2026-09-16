@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from src.config import load_config
 from src.feature import FeatureCalculator
 from src.fetcher import StockDataFetcher
-from src.handler import DataHandler
+from src.handler import DataHandler, DataWindow
 from src.store import StockDataStore
 
 
@@ -67,17 +67,26 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.get("/stocks/{ts_code}")
-def get_stock_and_features(ts_code: str) -> dict:
-    try:
-        stock_df, feature_df = data_handler.get_stock_and_feature(ts_code)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+@app.get("/stocklist")
+def get_stock_list():
+    stock_list = data_handler.get_stock_list()
+    return {"data": stock_list}
 
+
+@app.get("/stocks/{ts_code}")
+def get_stock_and_features(
+    ts_code: str, window: DataWindow = DataWindow.days_30
+) -> dict:
+    try:
+        stock_df, feature_df = data_handler.get_stock_and_feature(ts_code, window)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {
-        "ts_code": ts_code,
-        "stock": json.loads(stock_df.to_json(orient="records", date_format="iso")),
-        "features": json.loads(feature_df.to_json(orient="records", date_format="iso")),
+        "data": {
+            "ts_code": ts_code,
+            "stock": json.loads(stock_df.to_json(orient="records")),
+            "features": json.loads(feature_df.to_json(orient="records")),
+        }
     }
 
 
