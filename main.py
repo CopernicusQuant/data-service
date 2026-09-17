@@ -5,6 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from src.config import load_config
@@ -43,6 +44,8 @@ def configure_logging() -> logging.Logger:
 
 app = FastAPI(title="Copernicus Quant Data Service", version="0.1.0")
 
+app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173"])
+
 logger = configure_logging()
 logger.info("Starting application")
 try:
@@ -73,7 +76,7 @@ def get_stock_list():
     return {"data": stock_list}
 
 
-@app.get("/stocks/{ts_code}")
+@app.get("/stock/{ts_code}")
 def get_stock_and_features(
     ts_code: str, window: DataWindow = DataWindow.days_30
 ) -> dict:

@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 class DataWindow(StrEnum):
     days_30 = "30days"
     days_60 = "60days"
-    years_1 = "1year"
-    years_3 = "3year"
+    year_1 = "1year"
+    years_3 = "3years"
     all = "all"
 
 
