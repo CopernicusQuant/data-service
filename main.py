@@ -76,9 +76,18 @@ def get_stock_list():
     return {"data": stock_list}
 
 
+@app.get("/stockinfo")
+def get_stock_info(ticker: str):
+    try:
+        stock_info = data_handler.get_stock_info(ts_code=ticker)
+        return {"data": stock_info}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @app.get("/stock/{ts_code}")
 def get_stock_and_features(
-    ts_code: str, window: DataWindow = DataWindow.days_30
+    ts_code: str, window: DataWindow = DataWindow.days_60
 ) -> dict:
     try:
         stock_df, feature_df = data_handler.get_stock_and_feature(ts_code, window)
