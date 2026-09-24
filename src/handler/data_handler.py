@@ -12,8 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 class DataWindow(StrEnum):
-    days_30 = "30days"
     days_60 = "60days"
+    days_180 = "180days"
     year_1 = "1year"
     years_3 = "3years"
     all = "all"
@@ -149,11 +149,32 @@ class DataHandler:
         Get the full list of stock tickers and company names
         format: [{ts_code: company_name}, {ts_code: company_name}, ...]
         """
-        stock_list = self.data_store.stock_list_df["company_name"].to_dict()
+        stock_list = self.data_store.stock_list_df[
+            ["company_name", "sector", "sub_industry"]
+        ].to_dict(orient="index")
         return stock_list
 
+    def get_stock_info(self, ts_code: str) -> dict[str]:
+        """
+        Get given ts_code's stock info
+        """
+        ts_code = ts_code.upper()
+        if ts_code not in self.data_store.stock_list_df.index:
+            raise KeyError("Invalid stock ticker")
+        stock_info = self.data_store.stock_list_df.loc[ts_code][
+            [
+                "ts_code",
+                "company_name",
+                "sector",
+                "sub_industry",
+                "headquarters",
+                "founded",
+            ]
+        ].to_dict()
+        return stock_info
+
     def get_stock_and_feature(
-        self, ts_code: str, window: DataWindow = DataWindow.days_30
+        self, ts_code: str, window: DataWindow = DataWindow.days_60
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
         get a single stock's price data and feature data within a given period
@@ -184,15 +205,15 @@ class DataHandler:
         """
         approx_days_year = 252  # approximate trading days a year
         match window:
-            case DataWindow.days_30:
-                return df.tail(30)
             case DataWindow.days_60:
                 return df.tail(60)
-            case DataWindow.years_1:
-                return df.tail(approx_days_year)[::-2].iloc[::-1]
+            case DataWindow.days_180:
+                return df.tail(180)
+            case DataWindow.year_1:
+                return df.tail(approx_days_year)
             case DataWindow.years_3:
-                return df.tail(approx_days_year * 3)[::-6].iloc[::-1]
+                return df.tail(approx_days_year * 3)
             case DataWindow.all:
-                return df[::-10].iloc[::-1]
+                return df
             case _:
                 raise ValueError(f"Unsupported data window {window}")
