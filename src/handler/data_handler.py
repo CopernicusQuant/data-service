@@ -150,8 +150,8 @@ class DataHandler:
         format: [{ts_code: company_name}, {ts_code: company_name}, ...]
         """
         stock_list = self.data_store.stock_list_df[
-            ["company_name", "sector", "sub_industry"]
-        ].to_dict(orient="index")
+            ["ts_code", "company_name"]
+        ].values.tolist()
         return stock_list
 
     def get_stock_info(self, ts_code: str) -> dict[str]:
@@ -193,7 +193,17 @@ class DataHandler:
             raise KeyError("Invalid stock ticker")
         stock_df = self.slice_df(
             self.data_store.read_stock(ts_code=ts_code), window=window
-        )
+        )[
+            [
+                "trade_date",
+                "ts_code",
+                "adj_open",
+                "adj_close",
+                "adj_high",
+                "adj_low",
+                "adj_vol",
+            ]
+        ]
         feature_df = self.slice_df(
             self.data_store.read_feature(ts_code=ts_code), window=window
         )
