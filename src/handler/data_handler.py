@@ -19,6 +19,9 @@ class DataWindow(StrEnum):
     all = "all"
 
 
+feature_groups = {"pricemomentum": ["ma_5", "ma_10", "ma_20", "ma_60"]}
+
+
 class DataHandler:
     def __init__(
         self,
@@ -174,7 +177,10 @@ class DataHandler:
         return stock_info
 
     def get_stock_and_feature(
-        self, ts_code: str, window: DataWindow = DataWindow.days_60
+        self,
+        ts_code: str,
+        window: DataWindow = DataWindow.days_60,
+        group: str = "pricemomentum",
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         """
         get a single stock's price data and feature data within a given period
@@ -191,6 +197,8 @@ class DataHandler:
         ts_code = ts_code.upper()
         if ts_code not in self.data_store.stock_list_df.index:
             raise KeyError("Invalid stock ticker")
+        if group not in feature_groups:
+            raise KeyError("Invalid feature group name")
         stock_df = self.slice_df(
             self.data_store.read_stock(ts_code=ts_code), window=window
         )[
@@ -206,7 +214,8 @@ class DataHandler:
         ]
         feature_df = self.slice_df(
             self.data_store.read_feature(ts_code=ts_code), window=window
-        )
+        )[["ts_code", "trade_date", *feature_groups[group]]]
+
         return stock_df, feature_df
 
     def slice_df(self, df: pd.DataFrame, window: DataWindow) -> pd.DataFrame:
