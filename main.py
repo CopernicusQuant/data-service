@@ -87,10 +87,12 @@ def get_stock_info(ticker: str):
 
 @app.get("/stock/{ts_code}")
 def get_stock_and_features(
-    ts_code: str, window: DataWindow = DataWindow.days_60
+    ts_code: str, window: DataWindow = DataWindow.days_60, group="pricemomentum"
 ) -> dict:
     try:
-        stock_df, feature_df = data_handler.get_stock_and_feature(ts_code, window)
+        stock_df, feature_df = data_handler.get_stock_and_feature(
+            ts_code, window, group
+        )
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {
