@@ -16,10 +16,24 @@ class DataWindow(StrEnum):
     days_180 = "180days"
     year_1 = "1year"
     years_3 = "3years"
+    years_5 = "5years"
     all = "all"
 
 
-feature_groups = {"pricemomentum": ["ma_5", "ma_10", "ma_20", "ma_60"]}
+feature_groups = {
+    "pricemomentum": [
+        "ma_5",
+        "ma_10",
+        "ma_20",
+        "ma_60",
+        "ma_5_bias",
+        "ma_20_bias",
+        "ma_60_bias",
+        "return_5d",
+        "return_20d",
+        "return_60d",
+    ]
+}
 
 
 class DataHandler:
@@ -232,6 +246,8 @@ class DataHandler:
                 return df.tail(approx_days_year)
             case DataWindow.years_3:
                 return df.tail(approx_days_year * 3)
+            case DataWindow.years_5:
+                return df.tail(approx_days_year * 5)
             case DataWindow.all:
                 return df
             case _:
