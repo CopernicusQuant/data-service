@@ -32,6 +32,8 @@ feature_groups = {
         "return_5d",
         "return_20d",
         "return_60d",
+        "up_ratio_5d",
+        "up_ratio_20d",
     ]
 }
 
