@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 class DataWindow(StrEnum):
     days_60 = "60days"
+    days_90 = "90days"
     days_180 = "180days"
     year_1 = "1year"
     years_3 = "3years"
@@ -35,16 +36,12 @@ feature_groups = {
         "up_ratio_20d",
     ],
     "volumemomentum": [
-        "vol_ma_5",
         "vol_ma_5_bias",
         "vol_change_5d",
-        "vol_ma_10",
         "vol_ma_10_bias",
         "vol_change_10d",
-        "vol_ma_20",
         "vol_ma_20_bias",
         "vol_change_20d",
-        "vol_ma_60",
         "vol_ma_60_bias",
         "vol_change_60d",
         "vol_ma_5_10_ratio",
@@ -90,6 +87,9 @@ feature_groups = {
         "dema_10_20_dead",
         "dema_20_60_dead",
     ],
+    "rsi": ["rsi_6", "rsi_14"],
+    "obv": ["obv_strength_5", "obv_strength_20", "obv_strength_accel_5_20"],
+    "kdj": ["kdj_low_9", "kdj_high_9", "kdj_k", "kdj_d", "kdj_j"],
 }
 
 
@@ -298,6 +298,8 @@ class DataHandler:
         match window:
             case DataWindow.days_60:
                 return df.tail(60)
+            case DataWindow.days_90:
+                return df.tail(90)
             case DataWindow.days_180:
                 return df.tail(180)
             case DataWindow.year_1:
